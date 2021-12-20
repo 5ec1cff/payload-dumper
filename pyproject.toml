@@ -12,6 +12,9 @@ enlighten = "^1.10.2"
 
 [tool.poetry.dev-dependencies]
 
+[tool.poetry.scripts]
+payload_dumper = "payload_dumper:dumper.main"
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
