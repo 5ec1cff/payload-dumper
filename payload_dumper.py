@@ -7,6 +7,7 @@ import argparse
 import bsdiff4
 import io
 import os
+from enlighten import get_manager
 
 try:
     import lzma
@@ -16,6 +17,8 @@ except ImportError:
 import update_metadata_pb2 as um
 
 flatten = lambda l: [item for sublist in l for item in sublist]
+
+manager = get_manager()
 
 
 def u32(x):
@@ -100,8 +103,7 @@ def data_for_op(op, out_file, old_file):
 
 
 def dump_part(part):
-    sys.stdout.write("Processing %s partition" % part.partition_name)
-    sys.stdout.flush()
+    print("Processing partition: %s" % part.partition_name)
 
     out_file = open("%s/%s.img" % (args.out, part.partition_name), "wb")
     h = hashlib.sha256()
@@ -111,12 +113,13 @@ def dump_part(part):
     else:
         old_file = None
 
+    operation_progress = manager.counter(
+        total=len(part.operations), desc="Operations", unit="op", leave=False
+    )
     for op in part.operations:
         data = data_for_op(op, out_file, old_file)
-        sys.stdout.write(".")
-        sys.stdout.flush()
-
-    print("Done")
+        operation_progress.update()
+    operation_progress.close()
 
 
 parser = argparse.ArgumentParser(description="OTA payload dumper")
@@ -164,8 +167,12 @@ dam.ParseFromString(manifest)
 block_size = dam.block_size
 
 if args.images == "":
+    progress = manager.counter(
+        total=len(dam.partitions), desc="Partitions", unit="part", position=1
+    )
     for part in dam.partitions:
         dump_part(part)
+        progress.update()
 else:
     images = args.images.split(",")
     for image in images:
@@ -173,4 +180,6 @@ else:
         if partition:
             dump_part(partition[0])
         else:
-            sys.stderr.write("Partition %s not found in payload!\n" % image)
+            print("Partition %s not found in payload!" % image)
+
+manager.stop()
