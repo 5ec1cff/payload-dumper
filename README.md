@@ -31,7 +31,7 @@ payload_dumper payload.bin
 
 Use a comma-separated list of partitions to dump:
 ```
-payload_dumper --partitions boot,dtbo,vendor
+payload_dumper --partitions boot,dtbo,vendor payload.bin
 ```
 
 ### Patching older image with OTA
