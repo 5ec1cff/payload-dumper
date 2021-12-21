@@ -55,11 +55,18 @@ class Dumper:
             partitions = []
             for image in self.images.split(","):
                 image = image.strip()
+                found = False
                 for dam_part in self.dam.partitions:
                     if dam_part.partition_name == image:
                         partitions.append(dam_part)
+                        found = True
                         break
+                if not found:
                     print("Partition %s not found in image" % image)
+
+        if len(partitions) == 0:
+            print("Not operating on any partitions")
+            return 0
 
         partitions_with_ops = []
         for partition in partitions:

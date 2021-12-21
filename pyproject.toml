@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "payload_dumper"
-version = "0.2.0"
+version = "0.2.1"
 description = "Dump partitions from Android's payload.bin"
 authors = ["Rasmus Moorats <xx@nns.ee>"]
 readme = "README.md"
