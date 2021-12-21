@@ -1,6 +1,6 @@
 # payload dumper
 
-Dumps the `payload.bin` image found in Android update images.
+Dumps the `payload.bin` image found in Android update images. Has significant performance gains over other tools due to using multiprocessing.
 
 ## Installation
 
@@ -14,6 +14,10 @@ Dumps the `payload.bin` image found in Android update images.
 ```sh
 pip install --user payload_dumper
 ```
+
+## Example ASCIIcast
+
+[![asciicast](https://asciinema.org/a/UbDZGZwCXux50sSzy1fc1bhaO.svg)](https://asciinema.org/a/UbDZGZwCXux50sSzy1fc1bhaO)
 
 ## Usage
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from time import sleep
 import struct
 import hashlib
 import bz2
@@ -9,6 +10,7 @@ import io
 import os
 from enlighten import get_manager
 import lzma
+from multiprocessing import Process, Queue, cpu_count
 import payload_dumper.update_metadata_pb2 as um
 
 flatten = lambda l: [item for sublist in l for item in sublist]
@@ -34,45 +36,102 @@ def verify_contiguous(exts):
 
 
 class Dumper:
-    def __init__(self, payloadfile, out, diff=None, old=None, images=""):
+    def __init__(
+        self, payloadfile, out, diff=None, old=None, images="", workers=cpu_count()
+    ):
         self.payloadfile = payloadfile
         self.out = out
         self.diff = diff
         self.old = old
         self.images = images
+        self.workers = workers
         self.validate_magic()
         self.manager = get_manager()
 
     def run(self):
         if self.images == "":
-            progress = self.manager.counter(
-                total=len(self.dam.partitions),
-                desc="Partitions",
-                unit="part",
-                position=1,
-            )
-            for part in self.dam.partitions:
-                self.dump_part(part)
-                progress.update()
+            partitions = self.dam.partitions
         else:
-            images = [image.strip() for image in self.images.split(",")]
-            progress = self.manager.counter(
-                total=len(images),
-                desc="Partitions",
-                unit="part",
-                position=1,
-            )
-            for image in images:
-                partition = [
-                    part for part in self.dam.partitions if part.partition_name == image
-                ]
-                if partition:
-                    self.dump_part(partition[0])
-                else:
-                    print("Partition %s not found in payload!" % image)
-                progress.update()
+            partitions = []
+            for image in self.images.split(","):
+                image = image.strip()
+                for dam_part in self.dam.partitions:
+                    if dam_part.partition_name == image:
+                        partitions.append(dam_part)
+                        break
+                    print("Partition %s not found in image" % image)
 
+        partitions_with_ops = []
+        for partition in partitions:
+            operations = []
+            for operation in partition.operations:
+                self.payloadfile.seek(self.data_offset + operation.data_offset)
+                operations.append(
+                    {
+                        "operation": operation,
+                        "data": self.payloadfile.read(operation.data_length),
+                    }
+                )
+            partitions_with_ops.append(
+                {
+                    "partition": partition,
+                    "operations": operations,
+                }
+            )
+
+        self.payloadfile.close()
+
+        self.multiprocess_partitions(partitions_with_ops)
         self.manager.stop()
+
+    def multiprocess_partitions(self, partitions):
+        started = 0
+        active = {}
+        pb_started = self.manager.counter(
+            total=len(partitions), desc="Partitions", unit="part", color="yellow"
+        )
+        pb_finished = pb_started.add_subcounter("green", all_fields=True)
+
+        while len(partitions) > started or active:
+
+            if len(partitions) > started and len(active) < self.workers:
+                queue = Queue()
+                part = partitions[started]
+                process = Process(target=self.dump_part, args=(part, queue))
+                started += 1
+                counter = self.manager.counter(
+                    total=len(part["operations"]),
+                    desc="    %s" % part["partition"].partition_name,
+                    unit="ops",
+                    leave=False,
+                )
+                process.start()
+                pb_started.update()
+                active[started] = (process, queue, counter)
+
+            for partition in tuple(active.keys()):
+                process, queue, counter = active[partition]
+                alive = process.is_alive()
+
+                count = None
+                while not queue.empty():
+                    count = queue.get()
+
+                if count is not None:
+                    counter.count = count
+                    counter.update(0)
+
+                if not alive:
+                    counter.close()
+                    print(
+                        "%s - processed %d operations"
+                        % (
+                            partitions[partition - 1]["partition"].partition_name,
+                            counter.total,
+                        )
+                    )
+                    del active[partition]
+                    pb_finished.update_from(pb_started)
 
     def validate_magic(self):
         magic = self.payloadfile.read(4)
@@ -96,9 +155,9 @@ class Dumper:
         self.dam.ParseFromString(manifest)
         self.block_size = self.dam.block_size
 
-    def data_for_op(self, op, out_file, old_file):
-        self.payloadfile.seek(self.data_offset + op.data_offset)
-        data = self.payloadfile.read(op.data_length)
+    def data_for_op(self, operation, out_file, old_file):
+        data = operation["data"]
+        op = operation["operation"]
 
         # assert hashlib.sha256(data).digest() == op.data_sha256_hash, 'operation data hash mismatch'
 
@@ -156,24 +215,21 @@ class Dumper:
 
         return data
 
-    def dump_part(self, part):
-        print("Processing %s" % part.partition_name)
-
-        out_file = open("%s/%s.img" % (self.out, part.partition_name), "wb")
+    def dump_part(self, part, queue):
+        name = part["partition"].partition_name
+        out_file = open("%s/%s.img" % (self.out, name), "wb")
         h = hashlib.sha256()
 
         if self.diff:
-            old_file = open("%s/%s.img" % (self.old, part.partition_name), "rb")
+            old_file = open("%s/%s.img" % (self.old, name), "rb")
         else:
             old_file = None
 
-        operation_progress = self.manager.counter(
-            total=len(part.operations), desc="Operations", unit="op", leave=False
-        )
-        for op in part.operations:
+        i = 0
+        for op in part["operations"]:
             data = self.data_for_op(op, out_file, old_file)
-            operation_progress.update()
-        operation_progress.close()
+            i += 1
+            queue.put(i)
 
 
 def main():
@@ -182,7 +238,7 @@ def main():
         "payloadfile", type=argparse.FileType("rb"), help="payload file name"
     )
     parser.add_argument(
-        "--out", default="output", help="output directory (default: output)"
+        "--out", default="output", help="output directory (default: 'output')"
     )
     parser.add_argument(
         "--diff",
@@ -192,10 +248,18 @@ def main():
     parser.add_argument(
         "--old",
         default="old",
-        help="directory with original images for differential OTA (default: old)",
+        help="directory with original images for differential OTA (default: 'old')",
     )
     parser.add_argument(
-        "--partitions", default="", help="comma separated list of partitions to extract (default: extract all)"
+        "--partitions",
+        default="",
+        help="comma separated list of partitions to extract (default: extract all)",
+    )
+    parser.add_argument(
+        "--workers",
+        default=cpu_count(),
+        type=int,
+        help="numer of workers (default: CPU count - %d)" % cpu_count(),
     )
     args = parser.parse_args()
 
@@ -204,7 +268,12 @@ def main():
         os.makedirs(args.out)
 
     dumper = Dumper(
-        args.payloadfile, args.out, diff=args.diff, old=args.old, images=args.partitions
+        args.payloadfile,
+        args.out,
+        diff=args.diff,
+        old=args.old,
+        images=args.partitions,
+        workers=args.workers,
     )
     dumper.run()
 
