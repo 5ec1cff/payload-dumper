@@ -10,7 +10,8 @@ import io
 import os
 from enlighten import get_manager
 import lzma
-from multiprocessing import Process, Queue, cpu_count
+from multiprocessing import cpu_count
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import payload_dumper.update_metadata_pb2 as um
 
 flatten = lambda l: [item for sublist in l for item in sublist]
@@ -92,53 +93,33 @@ class Dumper:
         self.manager.stop()
 
     def multiprocess_partitions(self, partitions):
-        started = 0
-        active = {}
-        pb_started = self.manager.counter(
-            total=len(partitions), desc="Partitions", unit="part", color="yellow"
-        )
-        pb_finished = pb_started.add_subcounter("green", all_fields=True)
+        progress_bars = {}
 
-        while len(partitions) > started or active:
+        def update_progress(partition_name, count):
+            progress_bars[partition_name].update(count)
 
-            if len(partitions) > started and len(active) < self.workers:
-                queue = Queue()
-                part = partitions[started]
-                process = Process(target=self.dump_part, args=(part, queue))
-                started += 1
-                counter = self.manager.counter(
+        with ThreadPoolExecutor(max_workers=self.workers) as executor:
+            for part in partitions:
+                partition_name = part['partition'].partition_name
+                progress_bars[partition_name] = self.manager.counter(
                     total=len(part["operations"]),
-                    desc="    %s" % part["partition"].partition_name,
+                    desc=f"{partition_name}",
                     unit="ops",
-                    leave=False,
+                    leave=True,
                 )
-                process.start()
-                pb_started.update()
-                active[started] = (process, queue, counter)
 
-            for partition in tuple(active.keys()):
-                process, queue, counter = active[partition]
-                alive = process.is_alive()
+            futures = {executor.submit(self.dump_part, part, update_progress): part for part in partitions}
 
-                count = None
-                while not queue.empty():
-                    count = queue.get()
+            for future in as_completed(futures):
+                part = futures[future]
+                partition_name = part['partition'].partition_name
+                try:
+                    future.result()
+                    progress_bars[partition_name].close()
+                except Exception as exc:
+                    print(f"{partition_name} - processing generated an exception: {exc}")
+                    progress_bars[partition_name].close()
 
-                if count is not None:
-                    counter.count = count
-                    counter.update(0)
-
-                if not alive:
-                    counter.close()
-                    print(
-                        "%s - processed %d operations"
-                        % (
-                            partitions[partition - 1]["partition"].partition_name,
-                            counter.total,
-                        )
-                    )
-                    del active[partition]
-                    pb_finished.update_from(pb_started)
 
     def validate_magic(self):
         magic = self.payloadfile.read(4)
@@ -222,7 +203,7 @@ class Dumper:
 
         return data
 
-    def dump_part(self, part, queue):
+    def dump_part(self, part, update_callback):
         name = part["partition"].partition_name
         out_file = open("%s/%s.img" % (self.out, name), "wb")
         h = hashlib.sha256()
@@ -232,11 +213,9 @@ class Dumper:
         else:
             old_file = None
 
-        i = 0
         for op in part["operations"]:
             data = self.data_for_op(op, out_file, old_file)
-            i += 1
-            queue.put(i)
+            update_callback(part["partition"].partition_name, 1)
 
 
 def main():
