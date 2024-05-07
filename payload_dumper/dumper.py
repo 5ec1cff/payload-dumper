@@ -13,6 +13,7 @@ import lzma
 from multiprocessing import cpu_count
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import payload_dumper.update_metadata_pb2 as um
+import zipfile
 
 flatten = lambda l: [item for sublist in l for item in sublist]
 
@@ -46,7 +47,14 @@ class Dumper:
         self.old = old
         self.images = images
         self.workers = workers
-        self.validate_magic()
+        try:
+            self.validate_magic()
+        except AssertionError:
+            # try zip
+            with zipfile.ZipFile(self.payloadfile, "r") as zip_file:
+                self.payloadfile = zip_file.open("payload.bin", "r")
+            self.validate_magic()
+            pass
         self.manager = get_manager()
 
     def run(self):
