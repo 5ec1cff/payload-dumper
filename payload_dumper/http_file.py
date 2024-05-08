@@ -15,7 +15,7 @@ class HttpFile(io.RawIOBase):
     def writable(self) -> bool:
         return False
 
-    def _read_internal(self, buf: bytes):
+    def _read_internal(self, buf: bytes) -> int:
         size = len(buf)
         end_pos = self.pos + size - 1
         if self.pos >= self.size:
@@ -44,7 +44,7 @@ class HttpFile(io.RawIOBase):
         self._read_internal(buf)
         return buf
 
-    def readinto(self, buffer) -> int | None:
+    def readinto(self, buffer) -> int:
         # print(f'read into from {self.pos}-{end_pos}')
         return self._read_internal(buffer)
 
