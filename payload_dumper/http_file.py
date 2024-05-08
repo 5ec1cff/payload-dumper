@@ -24,14 +24,16 @@ class HttpFile(io.RawIOBase):
         with self.client.stream('GET', self.url, headers=headers) as r:
             if r.status_code != 206:
                 raise io.UnsupportedOperation('Remote did not return partial content!')
-            self.progress_reporter(0, size)
+            if self.progress_reporter is not None:
+                self.progress_reporter(0, size)
             n = 0
             for chunk in r.iter_bytes(8192):
                 buf[n:n+len(chunk)] = chunk
                 n += len(chunk)
                 if self.progress_reporter is not None:
                     self.progress_reporter(n, size)
-            self.progress_reporter(size, size)
+            if self.progress_reporter is not None:
+                self.progress_reporter(size, size)
             self.total_bytes += n
         self.pos += size
         return size
@@ -89,8 +91,14 @@ class HttpFile(io.RawIOBase):
 
 if __name__ == "__main__":
     import zipfile
-    f = HttpFile('https://bkt-sgp-miui-ota-update-alisgp.oss-ap-southeast-1.aliyuncs.com/V14.0.27.0.TMRCNXM/miui_MARBLE_V14.0.27.0.TMRCNXM_07a1238ff9_13.0.zip')
+    f = HttpFile('https://dl.google.com/dl/android/aosp/shiba-ota-ap1a.240505.005-1ab58b6a.zip')
+    f.seek(0, os.SEEK_END)
+    print('file size:', f.tell())
+    f.seek(0, os.SEEK_SET)
     z = zipfile.ZipFile(f)
     print(z.namelist())
-    print('read total:', f.total_bytes)
+    for name in z.namelist():
+        with z.open(name) as payload:
+            print(name, 'compress type:', payload._compress_type)
+    print('total read:', f.total_bytes)
     pass

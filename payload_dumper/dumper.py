@@ -297,7 +297,7 @@ def main():
     dumper.run()
 
     if isinstance(payload_file, http_file.HttpFile):
-        print('\ntotal read bytes from network:', payload_file.total_bytes)
+        print('\ntotal bytes read from network:', payload_file.total_bytes)
 
 
 if __name__ == "__main__":
