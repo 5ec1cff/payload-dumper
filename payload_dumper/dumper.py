@@ -12,8 +12,9 @@ from enlighten import get_manager
 import lzma
 from multiprocessing import cpu_count
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import payload_dumper.update_metadata_pb2 as um
+import update_metadata_pb2 as um
 import zipfile
+import http_file
 
 flatten = lambda l: [item for sublist in l for item in sublist]
 
@@ -229,7 +230,7 @@ class Dumper:
 def main():
     parser = argparse.ArgumentParser(description="OTA payload dumper")
     parser.add_argument(
-        "payloadfile", type=argparse.FileType("rb"), help="payload file name"
+        "payloadfile", help="payload file name"
     )
     parser.add_argument(
         "--out", default="output", help="output directory (default: 'output')"
@@ -261,8 +262,17 @@ def main():
     if not os.path.exists(args.out):
         os.makedirs(args.out)
 
+    payload_file = args.payloadfile
+    if payload_file.startswith('http://') or payload_file.startswith("https://"):
+        try:
+            payload_file = http_file.HttpFile(payload_file)
+        except:
+            print('unsupported url!')
+    else:
+        payload_file = open(payload_file, 'rb')
+
     dumper = Dumper(
-        args.payloadfile,
+        payload_file,
         args.out,
         diff=args.diff,
         old=args.old,
@@ -270,6 +280,9 @@ def main():
         workers=args.workers,
     )
     dumper.run()
+
+    if isinstance(payload_file, http_file.HttpFile):
+        print('\ntotal read bytes from network:', payload_file.total_bytes)
 
 
 if __name__ == "__main__":
