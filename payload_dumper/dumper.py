@@ -43,20 +43,35 @@ class Dumper:
         self, payloadfile, out, diff=None, old=None, images="", workers=cpu_count()
     ):
         self.payloadfile = payloadfile
+        self.manager = get_manager()
+        self.download_progress = None
+        if isinstance(payloadfile, http_file.HttpFile):
+            payloadfile.progress_reporter = self.update_download_progress
         self.out = out
         self.diff = diff
         self.old = old
         self.images = images
         self.workers = workers
         try:
-            self.validate_magic()
+            self.parse_metadata()
         except AssertionError:
             # try zip
             with zipfile.ZipFile(self.payloadfile, "r") as zip_file:
                 self.payloadfile = zip_file.open("payload.bin", "r")
-            self.validate_magic()
+            self.parse_metadata()
             pass
-        self.manager = get_manager()
+
+    def update_download_progress(self, prog, total):
+        if self.download_progress is None and prog != total:
+            self.download_progress = self.manager.counter(
+                    total=total,
+                    desc="download",
+                    unit="b", leave=False)
+        if self.download_progress is not None:
+            self.download_progress.update(prog - self.download_progress.count)
+            if prog == total:
+                self.download_progress.close()
+                self.download_progress = None
 
     def run(self):
         if self.images == "":
@@ -130,19 +145,22 @@ class Dumper:
                     progress_bars[partition_name].close()
 
 
-    def validate_magic(self):
-        magic = self.payloadfile.read(4)
+    def parse_metadata(self):
+        head_len = 4 + 8 + 8 + 4
+        buffer = self.payloadfile.read(head_len)
+        assert len(buffer) == head_len
+        magic = buffer[:4]
         assert magic == b"CrAU"
 
-        file_format_version = u64(self.payloadfile.read(8))
+        file_format_version = u64(buffer[4:12])
         assert file_format_version == 2
 
-        manifest_size = u64(self.payloadfile.read(8))
+        manifest_size = u64(buffer[12:20])
 
         metadata_signature_size = 0
 
         if file_format_version > 1:
-            metadata_signature_size = u32(self.payloadfile.read(4))
+            metadata_signature_size = u32(buffer[20:24])
 
         manifest = self.payloadfile.read(manifest_size)
         self.metadata_signature = self.payloadfile.read(metadata_signature_size)
@@ -264,10 +282,7 @@ def main():
 
     payload_file = args.payloadfile
     if payload_file.startswith('http://') or payload_file.startswith("https://"):
-        try:
-            payload_file = http_file.HttpFile(payload_file)
-        except:
-            print('unsupported url!')
+        payload_file = http_file.HttpFile(payload_file)
     else:
         payload_file = open(payload_file, 'rb')
 

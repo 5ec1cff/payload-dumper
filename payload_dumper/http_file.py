@@ -15,32 +15,36 @@ class HttpFile(io.RawIOBase):
     def writable(self) -> bool:
         return False
 
-    def readall(self) -> bytes:
+    def _read_internal(self, buf: bytes):
+        size = len(buf)
+        end_pos = self.pos + size - 1
         if self.pos >= self.size:
             raise ValueError('reached EOF!')
-        end_pos = self.size - 1
-        # print(f'read all!! {self.pos}-{end_pos}')
         headers = {'Range': f'bytes={self.pos}-{end_pos}'}
-        r = self.client.get(self.url, headers=headers)
-        self.pos = end_pos + 1
-        content = r.read()
-        self.total_bytes += len(content)
-        return content
+        with self.client.stream('GET', self.url, headers=headers) as r:
+            if r.status_code != 206:
+                raise io.UnsupportedOperation('Remote did not return partial content!')
+            self.progress_reporter(0, size)
+            n = 0
+            for chunk in r.iter_bytes(8192):
+                buf[n:n+len(chunk)] = chunk
+                n += len(chunk)
+                if self.progress_reporter is not None:
+                    self.progress_reporter(n, size)
+            self.progress_reporter(size, size)
+            self.total_bytes += n
+        self.pos += size
+        return size
+
+    def readall(self) -> bytes:
+        sz = self.size - self.pos
+        buf = bytearray(sz)
+        self._read_internal(buf)
+        return buf
 
     def readinto(self, buffer) -> int | None:
-        if self.pos >= self.size:
-            raise ValueError('reached EOF!')
-        end_pos = self.pos + len(buffer) - 1
-        if end_pos >= self.size:
-            end_pos = self.size - 1
         # print(f'read into from {self.pos}-{end_pos}')
-        headers = {'Range': f'bytes={self.pos}-{end_pos}'}
-        r = self.client.get(self.url, headers=headers)
-        self.pos = end_pos + 1
-        content = r.read()
-        buffer[:len(content)] = content
-        self.total_bytes += len(content)
-        return len(content)
+        return self._read_internal(buffer)
 
     def seek(self, offset: int, whence: int = os.SEEK_SET) -> int:
         # print(f'seek to {offset} whence {whence}')
@@ -61,7 +65,7 @@ class HttpFile(io.RawIOBase):
     def tell(self) -> int:
         return self.pos
 
-    def __init__(self, url: str):
+    def __init__(self, url: str, progress_reporter = None):
         client = httpx.Client()
         self.url = url
         self.client = client
@@ -74,6 +78,7 @@ class HttpFile(io.RawIOBase):
         self.size = size
         self.pos = 0
         self.total_bytes = 0
+        self.progress_reporter = progress_reporter
 
     def close(self) -> None:
         self.client.close()
