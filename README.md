@@ -25,7 +25,7 @@ Future Outlook: Maybe it can support extracting some files in system partitions?
 ```commandline
 git clone https://github.com/5ec1cff/payload-dumper
 cd payload-dumper
-pip install -i requirement.txt
+pip install -r requirement.txt
 cd payload_dumper
 python dumper.py --partitions <partitions you need> <file path or url>
 ```
