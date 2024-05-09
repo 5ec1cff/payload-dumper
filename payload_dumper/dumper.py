@@ -40,7 +40,7 @@ def verify_contiguous(exts):
 
 class Dumper:
     def __init__(
-        self, payloadfile, out, diff=None, old=None, images="", workers=cpu_count()
+            self, payloadfile, out, diff=None, old=None, images="", workers=cpu_count()
     ):
         self.payloadfile = payloadfile
         self.manager = get_manager()
@@ -64,9 +64,9 @@ class Dumper:
     def update_download_progress(self, prog, total):
         if self.download_progress is None and prog != total:
             self.download_progress = self.manager.counter(
-                    total=total,
-                    desc="download",
-                    unit="b", leave=False)
+                total=total,
+                desc="download",
+                unit="b", leave=False)
         if self.download_progress is not None:
             self.download_progress.update(prog - self.download_progress.count)
             if prog == total:
@@ -143,7 +143,6 @@ class Dumper:
                 except Exception as exc:
                     print(f"{partition_name} - processing generated an exception: {exc}")
                     progress_bars[partition_name].close()
-
 
     def parse_metadata(self):
         head_len = 4 + 8 + 8 + 4
