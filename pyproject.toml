@@ -11,9 +11,9 @@ homepage = "https://github.com/nnsee/payload-dumper"
 payload_dumper = "payload_dumper:main"
 
 [tool.poetry.dependencies]
-python = "^3.12"
-httpx = "^0.23.3"
-protobuf = "^3.20.3"
+python = "^3.10"
+httpx = "^0.20.0"
+protobuf = "^3.19.3"
 bsdiff4 = "^1.2.1"
 enlighten = "^1.12.2"
 
