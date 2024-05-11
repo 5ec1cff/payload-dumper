@@ -1,20 +1,19 @@
 #!/usr/bin/env python
-from time import sleep
-import struct
-import hashlib
 import bz2
-import sys
-import argparse
-import bsdiff4
+import hashlib
 import io
-import os
-from enlighten import get_manager
 import lzma
-from multiprocessing import cpu_count
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import update_metadata_pb2 as um
+import struct
+import sys
 import zipfile
-import http_file
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from multiprocessing import cpu_count
+
+import bsdiff4
+from enlighten import get_manager
+
+from payload_dumper import http_file
+from payload_dumper import update_metadata_pb2 as um
 
 flatten = lambda l: [item for sublist in l for item in sublist]
 
@@ -40,7 +39,7 @@ def verify_contiguous(exts):
 
 class Dumper:
     def __init__(
-            self, payloadfile, out, diff=None, old=None, images="", workers=cpu_count()
+        self, payloadfile, out, diff=None, old=None, images="", workers=cpu_count()
     ):
         self.payloadfile = payloadfile
         self.manager = get_manager()
@@ -64,9 +63,8 @@ class Dumper:
     def update_download_progress(self, prog, total):
         if self.download_progress is None and prog != total:
             self.download_progress = self.manager.counter(
-                total=total,
-                desc="download",
-                unit="b", leave=False)
+                total=total, desc="download", unit="b", leave=False
+            )
         if self.download_progress is not None:
             self.download_progress.update(prog - self.download_progress.count)
             if prog == total:
@@ -124,7 +122,7 @@ class Dumper:
 
         with ThreadPoolExecutor(max_workers=self.workers) as executor:
             for part in partitions:
-                partition_name = part['partition'].partition_name
+                partition_name = part["partition"].partition_name
                 progress_bars[partition_name] = self.manager.counter(
                     total=len(part["operations"]),
                     desc=f"{partition_name}",
@@ -132,11 +130,14 @@ class Dumper:
                     leave=True,
                 )
 
-            futures = {executor.submit(self.dump_part, part, update_progress): part for part in partitions}
+            futures = {
+                executor.submit(self.dump_part, part, update_progress): part
+                for part in partitions
+            }
 
             for future in as_completed(futures):
                 part = futures[future]
-                partition_name = part['partition'].partition_name
+                partition_name = part["partition"].partition_name
                 try:
                     future.result()
                     progress_bars[partition_name].close()
@@ -164,7 +165,6 @@ class Dumper:
         manifest = self.payloadfile.read(manifest_size)
         self.metadata_signature = self.payloadfile.read(metadata_signature_size)
         self.data_offset = self.payloadfile.tell()
-
         self.dam = um.DeltaArchiveManifest()
         self.dam.ParseFromString(manifest)
         self.block_size = self.dam.block_size
@@ -242,62 +242,3 @@ class Dumper:
         for op in part["operations"]:
             data = self.data_for_op(op, out_file, old_file)
             update_callback(part["partition"].partition_name, 1)
-
-
-def main():
-    parser = argparse.ArgumentParser(description="OTA payload dumper")
-    parser.add_argument(
-        "payloadfile", help="payload file name"
-    )
-    parser.add_argument(
-        "--out", default="output", help="output directory (default: 'output')"
-    )
-    parser.add_argument(
-        "--diff",
-        action="store_true",
-        help="extract differential OTA",
-    )
-    parser.add_argument(
-        "--old",
-        default="old",
-        help="directory with original images for differential OTA (default: 'old')",
-    )
-    parser.add_argument(
-        "--partitions",
-        default="",
-        help="comma separated list of partitions to extract (default: extract all)",
-    )
-    parser.add_argument(
-        "--workers",
-        default=cpu_count(),
-        type=int,
-        help="numer of workers (default: CPU count - %d)" % cpu_count(),
-    )
-    args = parser.parse_args()
-
-    # Check for --out directory exists
-    if not os.path.exists(args.out):
-        os.makedirs(args.out)
-
-    payload_file = args.payloadfile
-    if payload_file.startswith('http://') or payload_file.startswith("https://"):
-        payload_file = http_file.HttpFile(payload_file)
-    else:
-        payload_file = open(payload_file, 'rb')
-
-    dumper = Dumper(
-        payload_file,
-        args.out,
-        diff=args.diff,
-        old=args.old,
-        images=args.partitions,
-        workers=args.workers,
-    )
-    dumper.run()
-
-    if isinstance(payload_file, http_file.HttpFile):
-        print('\ntotal bytes read from network:', payload_file.total_bytes)
-
-
-if __name__ == "__main__":
-    main()
