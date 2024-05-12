@@ -2,6 +2,7 @@
 import argparse
 import os
 from multiprocessing import cpu_count
+
 from payload_dumper import http_file
 from payload_dumper.dumper import Dumper
 
@@ -39,21 +40,21 @@ def main():
     if not os.path.exists(args.out):
         os.makedirs(args.out)
 
-        payload_file = args.payloadfile
-        if payload_file.startswith("http://") or payload_file.startswith("https://"):
-            payload_file = http_file.HttpFile(payload_file)
-        else:
-            payload_file = open(payload_file, "rb")
+    payload_file = args.payloadfile
+    if payload_file.startswith("http://") or payload_file.startswith("https://"):
+        payload_file = http_file.HttpFile(payload_file)
+    else:
+        payload_file = open(payload_file, "rb")
 
-        dumper = Dumper(
-            payload_file,
-            args.out,
-            diff=args.diff,
-            old=args.old,
-            images=args.partitions,
-            workers=args.workers,
-        )
-        dumper.run()
+    dumper = Dumper(
+        payload_file,
+        args.out,
+        diff=args.diff,
+        old=args.old,
+        images=args.partitions,
+        workers=args.workers,
+    )
+    dumper.run()
 
-        if isinstance(payload_file, http_file.HttpFile):
-            print("\ntotal bytes read from network:", payload_file.total_bytes)
+    if isinstance(payload_file, http_file.HttpFile):
+        print("\ntotal bytes read from network:", payload_file.total_bytes)
