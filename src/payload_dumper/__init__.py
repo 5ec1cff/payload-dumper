@@ -6,7 +6,6 @@ from multiprocessing import cpu_count
 from payload_dumper import http_file
 from payload_dumper.dumper import Dumper
 
-
 def main():
     parser = argparse.ArgumentParser(description="OTA payload dumper")
     parser.add_argument("payloadfile", help="payload file name")
@@ -39,6 +38,11 @@ def main():
         action="store_true",
         help="list partitions in the payload file",
     )
+    parser.add_argument(
+        "--metadata",
+        action="store_true",
+        help="extract and display metadata file from the payload",
+    )
     args = parser.parse_args()
 
     # Check for --out directory exists
@@ -59,6 +63,7 @@ def main():
         images=args.partitions,
         workers=args.workers,
         list_partitions=args.list,
+        extract_metadata=args.metadata,
     )
     dumper.run()
 

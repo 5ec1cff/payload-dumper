@@ -41,7 +41,7 @@ def verify_contiguous(exts):
 
 class Dumper:
     def __init__(
-        self, payloadfile, out, diff=None, old=None, images="", workers=cpu_count(), list_partitions=False
+        self, payloadfile, out, diff=None, old=None, images="", workers=cpu_count(), list_partitions=False, extract_metadata=False
     ):
         self.payloadfile = payloadfile
         self.manager = get_manager()
@@ -54,17 +54,22 @@ class Dumper:
         self.images = images
         self.workers = workers
         self.list_partitions = list_partitions
-        try:
-            self.parse_metadata()
-        except AssertionError:
-            # try zip
-            with zipfile.ZipFile(self.payloadfile, "r") as zip_file:
-                self.payloadfile = zip_file.open("payload.bin", "r")
-            self.parse_metadata()
-            pass
+        self.extract_metadata = extract_metadata
 
-        if self.list_partitions:
-            self.list_partitions_info()
+        if self.extract_metadata:
+            self.extract_and_display_metadata()
+        else:
+            try:
+                self.parse_metadata()
+            except AssertionError:
+                # try zip
+                with zipfile.ZipFile(self.payloadfile, "r") as zip_file:
+                    self.payloadfile = zip_file.open("payload.bin", "r")
+                self.parse_metadata()
+                pass
+
+            if self.list_partitions:
+                self.list_partitions_info()
 
     def update_download_progress(self, prog, total):
         if self.download_progress is None and prog != total:
@@ -78,7 +83,7 @@ class Dumper:
                 self.download_progress = None
 
     def run(self):
-        if self.list_partitions:
+        if self.list_partitions or self.extract_metadata:
             return
 
         if self.images == "":
@@ -280,3 +285,18 @@ class Dumper:
         readable_info = ', '.join(f"{info['partition_name']}({info['size_readable']})" for info in partitions_info)
         print(readable_info)
         print(f"\nPartition information saved to {output_file}")
+
+    def extract_and_display_metadata(self):
+        # Try to extract and display the metadata file from the zip
+        metadata_path = "META-INF/com/android/metadata"
+        try:
+            with zipfile.ZipFile(self.payloadfile, "r") as zip_file:
+                with zip_file.open(metadata_path) as meta_file:
+                    metadata_content = meta_file.read().decode('utf-8')
+                    output_file = os.path.join(self.out, "metadata")
+                    with open(output_file, "w") as f:
+                        f.write(metadata_content)
+                    print(metadata_content)
+                    print(f"\nMetadata saved to {output_file}")
+        except Exception as e:
+            print(f"Failed to extract {metadata_path}: {e}")
