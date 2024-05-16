@@ -32,7 +32,12 @@ def main():
         "--workers",
         default=cpu_count(),
         type=int,
-        help="numer of workers (default: CPU count - %d)" % cpu_count(),
+        help="number of workers (default: CPU count - %d)" % cpu_count(),
+    )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="list partitions in the payload file",
     )
     args = parser.parse_args()
 
@@ -53,6 +58,7 @@ def main():
         old=args.old,
         images=args.partitions,
         workers=args.workers,
+        list_partitions=args.list,
     )
     dumper.run()
 
