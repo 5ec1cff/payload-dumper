@@ -27,7 +27,7 @@ Dumps the `payload.bin` image found in Android update images. Has significant pe
 
 ### Requirements
 
-- Python3
+- Python3 >= 3.12
 - pip
 
 ## Usage
