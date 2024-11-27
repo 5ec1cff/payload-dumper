@@ -12,7 +12,7 @@ payload_dumper = "payload_dumper:main"
 
 [tool.poetry.dependencies]
 python = ">=3.12"  # https://t.me/real5ec1cff/205
-httpx = ">=0.21.2"  # https://github.com/encode/httpx/pull/2309
+httpx = ">=0.23.1"  # https://github.com/encode/httpx/pull/2309
 protobuf = "^3.19.3"
 bsdiff4 = "^1.2.1"
 enlighten = "^1.12.2"
