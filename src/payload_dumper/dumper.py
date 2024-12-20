@@ -14,8 +14,8 @@ from multiprocessing import cpu_count
 import bsdiff4
 from enlighten import get_manager
 
-from payload_dumper import http_file
-from payload_dumper import update_metadata_pb2 as um
+from . import http_file
+from . import update_metadata_pb2 as um
 
 flatten = lambda l: [item for sublist in l for item in sublist]
 

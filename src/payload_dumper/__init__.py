@@ -3,8 +3,8 @@ import argparse
 import os
 from multiprocessing import cpu_count
 
-from payload_dumper import http_file
-from payload_dumper.dumper import Dumper
+from . import http_file
+from .dumper import Dumper
 
 def main():
     parser = argparse.ArgumentParser(description="OTA payload dumper")

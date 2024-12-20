@@ -1,4 +1,4 @@
 #!/usr/bin/env python3
-from payload_dumper import main
+from . import main
 
 main()

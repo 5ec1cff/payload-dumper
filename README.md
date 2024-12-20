@@ -51,3 +51,16 @@ Assuming the old partitions are in a directory named `old/`:
 ```bash
 payload_dumper --diff payload.bin
 ```
+
+## Developing
+
+```shell
+git clone https://github.com/5ec1cff/payload-dumper
+# run
+cd src
+python -m payload_dumper
+# install
+cd ..
+pip install .
+```
+
