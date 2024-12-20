@@ -13,9 +13,9 @@ payload_dumper = "payload_dumper:main"
 [tool.poetry.dependencies]
 python = ">=3.8"
 httpx = ">=0.23.1"  # https://github.com/encode/httpx/pull/2309
-protobuf = "^3.20.3"
-bsdiff4 = "^1.2.1"
-enlighten = "^1.12.2"
+protobuf = ">=3.20.0"  # First version of google.protobuf.internal.builder
+bsdiff4 = ">=1.2.3"  # This version officially supports Python 3.12
+enlighten = ">=1.12.0"  # This version officially supports Python 3.12
 
 [tool.pytest.ini_options]
 pythonpath = "src"
