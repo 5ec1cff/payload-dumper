@@ -17,16 +17,15 @@ class HttpFile(io.RawIOBase):
 
     def _read_internal(self, buf: bytes) -> int:
         size = len(buf)
-        end_pos = self.pos + size - 1
-        if self.pos >= self.size:
-            raise ValueError("reached EOF!")
+        end_pos = min(self.pos + size - 1, self.size - 1)
+        size = end_pos - self.pos + 1
         headers = {"Range": f"bytes={self.pos}-{end_pos}"}
+        n = 0
         with self.client.stream("GET", self.url, headers=headers) as r:
             if r.status_code != 206:
                 raise io.UnsupportedOperation("Remote did not return partial content!")
             if self.progress_reporter is not None:
                 self.progress_reporter(0, size)
-            n = 0
             for chunk in r.iter_bytes(8192):
                 buf[n : n + len(chunk)] = chunk
                 n += len(chunk)
@@ -35,8 +34,9 @@ class HttpFile(io.RawIOBase):
             if self.progress_reporter is not None:
                 self.progress_reporter(size, size)
             self.total_bytes += n
-        self.pos += size
-        return size
+            self.pos += n
+        assert n == size
+        return n
 
     def readall(self) -> bytes:
         sz = self.size - self.pos
@@ -96,7 +96,7 @@ class HttpFile(io.RawIOBase):
 
 
 if __name__ == "__main__":
-    import zipfile
+    from . import zipfile
 
     with HttpFile(
         "https://dl.google.com/developers/android/vic/images/ota/husky_beta-ota-ap31.240322.027-3310ca50.zip"
@@ -109,4 +109,20 @@ if __name__ == "__main__":
         for name in z.namelist():
             with z.open(name) as payload:
                 print(name, "compress type:", payload._compress_type)
+        print("total read:", f.total_bytes)
+
+    with HttpFile(
+        "https://dl.google.com/developers/android/baklava/images/factory/comet_beta-bp21.241121.009-factory-0739d956.zip"
+    ) as f:
+        f.seek(0, os.SEEK_END)
+        print("file size:", f.tell())
+        f.seek(0, os.SEEK_SET)
+        z = zipfile.ZipFile(f)
+        print(z.namelist())
+        for name in z.namelist():
+            with z.open(name) as payload:
+                print(name, "compress type:", payload._compress_type, 'size:', payload._left)
+        with z.open("comet_beta-bp21.241121.009/image-comet_beta-bp21.241121.009.zip") as f2:
+            z2 = zipfile.ZipFile(f2)
+            print(z2.namelist())
         print("total read:", f.total_bytes)
