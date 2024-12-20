@@ -1,6 +1,5 @@
 """
 Read and write ZIP files.
-Copied from Python 3.12 https://github.com/python/cpython/blob/3.12/Lib/zipfile/_path/__init__.py
 
 XXX references to utf-8 need further investigation.
 """
