@@ -7,7 +7,7 @@ import lzma
 import os
 import struct
 import sys
-import zipfile
+from . import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from multiprocessing import cpu_count
 
