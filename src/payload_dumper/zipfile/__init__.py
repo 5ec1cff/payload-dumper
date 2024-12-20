@@ -1144,6 +1144,9 @@ class ZipExtFile(io.BufferedIOBase):
             read_offset -= len(self._readbuffer) - self._offset
             self._fileobj.seek(read_offset, os.SEEK_CUR)
             self._left -= read_offset
+            self._compress_left -= read_offset
+            if self._eof and read_offset < 0:
+                self._eof = False
             read_offset = 0
             # flush read buffer
             self._readbuffer = b''
