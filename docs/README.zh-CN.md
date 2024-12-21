@@ -13,7 +13,7 @@
 
 ```bash
 pip install git+https://github.com/5ec1cff/payload-dumper
-payload_dumper --partitions <partitions you need> <file path or url>
+payload_dumper --partitions <需要dump的分区> <文件路径或 url>
 ```
 ---
 
@@ -25,7 +25,7 @@ payload_dumper --partitions <partitions you need> <file path or url>
 
 ### Requirements
 
-- Python3 >= 3.12
+- Python3 >= 3.8
 - pip
 
 ## Usage
