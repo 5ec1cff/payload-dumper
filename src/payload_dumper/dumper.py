@@ -15,6 +15,7 @@ from enlighten import get_manager
 
 from . import mio
 from . import update_metadata_pb2 as um
+from .ziputil import get_zip_stored_entry_offset
 
 
 class ThreadSafeCounter():
@@ -72,7 +73,7 @@ class Dumper:
             self.extract_and_display_metadata()
         else:
             try:
-                off, size = mio.get_zip_stored_entry_offset(self.payloadfile, 'payload.bin')
+                off, size = get_zip_stored_entry_offset(self.payloadfile, 'payload.bin')
                 #print(f'payload.bin in zip {off=} {size=}')
                 self.base_off = off
             except:
@@ -305,7 +306,7 @@ class Dumper:
         # Try to extract and display the metadata file from the zip
         metadata_path = "META-INF/com/android/metadata"
         try:
-            off, sz = mio.get_zip_stored_entry_offset(self.payloadfile, metadata_path)
+            off, sz = get_zip_stored_entry_offset(self.payloadfile, metadata_path)
             data = self.payloadfile.read(off, sz)
             output_file = os.path.join(self.out, "metadata")
             with open(output_file, "wb") as f:
