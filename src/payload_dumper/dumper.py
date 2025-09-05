@@ -1,21 +1,36 @@
 #!/usr/bin/env python
 import bz2
-import hashlib
 import io
 import json
 import lzma
 import os
 import struct
 import sys
-from . import zipfile
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import cpu_count
 
 import bsdiff4
 from enlighten import get_manager
 
-from . import http_file
+from . import mio
 from . import update_metadata_pb2 as um
+
+
+class ThreadSafeCounter():
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.counter=0
+
+    def increment(self):
+        with self.lock:
+            self.counter+=1
+            return self.counter
+
+    def decrement(self):
+        with self.lock:
+            self.counter-=1
+            return self.counter
 
 flatten = lambda l: [item for sublist in l for item in sublist]
 
@@ -43,11 +58,8 @@ class Dumper:
     def __init__(
         self, payloadfile, out, diff=None, old=None, images="", workers=cpu_count(), list_partitions=False, extract_metadata=False
     ):
-        self.payloadfile = payloadfile
+        self.payloadfile: mio.MIOBase = payloadfile
         self.manager = get_manager()
-        self.download_progress = None
-        if isinstance(payloadfile, http_file.HttpFile):
-            payloadfile.progress_reporter = self.update_download_progress
         self.out = out
         self.diff = diff
         self.old = old
@@ -60,27 +72,16 @@ class Dumper:
             self.extract_and_display_metadata()
         else:
             try:
-                self.parse_metadata()
-            except AssertionError:
-                # try zip
-                with zipfile.ZipFile(self.payloadfile, "r") as zip_file:
-                    self.payloadfile = zip_file.open("payload.bin", "r")
-                self.parse_metadata()
-                pass
+                off, size = mio.get_zip_stored_entry_offset(self.payloadfile, 'payload.bin')
+                #print(f'payload.bin in zip {off=} {size=}')
+                self.base_off = off
+            except:
+                self.base_off = 0
+
+            self.parse_metadata()
 
             if self.list_partitions:
                 self.list_partitions_info()
-
-    def update_download_progress(self, prog, total):
-        if self.download_progress is None and prog != total:
-            self.download_progress = self.manager.counter(
-                total=total, desc="download", unit="b", leave=False
-            )
-        if self.download_progress is not None:
-            self.download_progress.update(prog - self.download_progress.count)
-            if prog == total:
-                self.download_progress.close()
-                self.download_progress = None
 
     def run(self):
         if self.list_partitions or self.extract_metadata:
@@ -109,11 +110,11 @@ class Dumper:
         for partition in partitions:
             operations = []
             for operation in partition.operations:
-                self.payloadfile.seek(self.data_offset + operation.data_offset)
                 operations.append(
                     {
                         "operation": operation,
-                        "data": self.payloadfile.read(operation.data_length),
+                        "offset": self.data_offset + operation.data_offset,
+                        "length": operation.data_length,
                     }
                 )
             partitions_with_ops.append(
@@ -123,18 +124,24 @@ class Dumper:
                 }
             )
 
-        self.payloadfile.close()
-
         self.multiprocess_partitions(partitions_with_ops)
         self.manager.stop()
 
     def multiprocess_partitions(self, partitions):
         progress_bars = {}
 
-        def update_progress(partition_name, count):
-            progress_bars[partition_name].update(count)
+        def update_progress(partition_name, count, max_count):
+            counter = progress_bars[partition_name]
+            counter.update(count)
+            if max_count == progress_bars[partition_name].count:
+                counter.close()
+
+        out_files = {}
+        old_files = {}
+        counters = {}
 
         with ThreadPoolExecutor(max_workers=self.workers) as executor:
+            all_task = []
             for part in partitions:
                 partition_name = part["partition"].partition_name
                 progress_bars[partition_name] = self.manager.counter(
@@ -144,24 +151,42 @@ class Dumper:
                     leave=True,
                 )
 
-            futures = {
-                executor.submit(self.dump_part, part, update_progress): part
-                for part in partitions
-            }
+                out_file = mio.MFile("%s/%s.img" % (self.out, partition_name), "w")
 
-            for future in as_completed(futures):
-                part = futures[future]
-                partition_name = part["partition"].partition_name
-                try:
-                    future.result()
-                    progress_bars[partition_name].close()
-                except Exception as exc:
-                    print(f"{partition_name} - processing generated an exception: {exc}")
-                    progress_bars[partition_name].close()
+                if self.diff:
+                    old_file = mio.MFile("%s/%s.img" % (self.old, partition_name), "rb")
+                else:
+                    old_file = None
+
+                out_files[partition_name] = out_file
+                old_files[partition_name] = old_file
+                counters[partition_name] = ThreadSafeCounter()
+
+            for part in partitions:
+                name = part["partition"].partition_name
+                ops = part['operations']
+                for op in ops:
+                    all_task.append(
+                        executor.submit(
+                            self.do_op,
+                            name,
+                            op,
+                            out_files[name],
+                            old_files[name],
+                            counters[name],
+                            len(ops),
+                            update_progress
+                        )
+                    )
+
+            for tsk in all_task:
+                tsk.result()
 
     def parse_metadata(self):
         head_len = 4 + 8 + 8 + 4
-        buffer = self.payloadfile.read(head_len)
+        fp = self.base_off
+        buffer = self.payloadfile.read(fp, head_len)
+        fp += head_len
         assert len(buffer) == head_len
         magic = buffer[:4]
         assert magic == b"CrAU"
@@ -176,50 +201,48 @@ class Dumper:
         if file_format_version > 1:
             metadata_signature_size = u32(buffer[20:24])
 
-        manifest = self.payloadfile.read(manifest_size)
-        self.metadata_signature = self.payloadfile.read(metadata_signature_size)
-        self.data_offset = self.payloadfile.tell()
+        manifest = self.payloadfile.read(fp, manifest_size)
+        fp += manifest_size
+        self.metadata_signature = self.payloadfile.read(fp, metadata_signature_size)
+        fp += metadata_signature_size
+        self.data_offset = fp - self.base_off
         self.dam = um.DeltaArchiveManifest()
         self.dam.ParseFromString(manifest)
         self.block_size = self.dam.block_size
 
-    def data_for_op(self, operation, out_file, old_file):
-        data = operation["data"]
+    def data_for_op(self, operation, out_file: mio.MIOBase, old_file: mio.MIOBase):
+        offset = operation["offset"]
+        length = operation["length"]
         op = operation["operation"]
 
         # assert hashlib.sha256(data).digest() == op.data_sha256_hash, 'operation data hash mismatch'
 
+        data = self.payloadfile.read(self.base_off + offset, length)
+
         if op.type == op.REPLACE_XZ:
             dec = lzma.LZMADecompressor()
             data = dec.decompress(data)
-            out_file.seek(op.dst_extents[0].start_block * self.block_size)
-            out_file.write(data)
+            out_file.write(op.dst_extents[0].start_block * self.block_size, data)
         elif op.type == op.REPLACE_BZ:
             dec = bz2.BZ2Decompressor()
             data = dec.decompress(data)
-            out_file.seek(op.dst_extents[0].start_block * self.block_size)
-            out_file.write(data)
+            out_file.write(op.dst_extents[0].start_block * self.block_size, data)
         elif op.type == op.REPLACE:
-            out_file.seek(op.dst_extents[0].start_block * self.block_size)
-            out_file.write(data)
+            out_file.write(op.dst_extents[0].start_block * self.block_size, data)
         elif op.type == op.SOURCE_COPY:
             if not self.diff:
                 print("SOURCE_COPY supported only for differential OTA")
                 sys.exit(-2)
-            out_file.seek(op.dst_extents[0].start_block * self.block_size)
             for ext in op.src_extents:
-                old_file.seek(ext.start_block * self.block_size)
-                data = old_file.read(ext.num_blocks * self.block_size)
-                out_file.write(data)
+                data = old_file.read(ext.start_block * self.block_size, ext.num_blocks * self.block_size)
+                out_file.write(op.dst_extents[0].start_block * self.block_size, data)
         elif op.type == op.SOURCE_BSDIFF:
             if not self.diff:
                 print("SOURCE_BSDIFF supported only for differential OTA")
                 sys.exit(-3)
-            out_file.seek(op.dst_extents[0].start_block * self.block_size)
             tmp_buff = io.BytesIO()
             for ext in op.src_extents:
-                old_file.seek(ext.start_block * self.block_size)
-                old_data = old_file.read(ext.num_blocks * self.block_size)
+                old_data = old_file.read(ext.start_block * self.block_size, ext.num_blocks * self.block_size)
                 tmp_buff.write(old_data)
             tmp_buff.seek(0)
             old_data = tmp_buff.read()
@@ -231,31 +254,22 @@ class Dumper:
                 tmp_buff.seek(n * self.block_size)
                 n += ext.num_blocks
                 data = tmp_buff.read(ext.num_blocks * self.block_size)
-                out_file.seek(ext.start_block * self.block_size)
-                out_file.write(data)
+                out_file.write(ext.start_block * self.block_size, data)
         elif op.type == op.ZERO:
             for ext in op.dst_extents:
-                out_file.seek(ext.start_block * self.block_size)
-                out_file.write(b"\x00" * ext.num_blocks * self.block_size)
+                out_file.write(ext.start_block * self.block_size, b"\x00" * ext.num_blocks * self.block_size)
         else:
             print("Unsupported type = %d" % op.type)
             sys.exit(-1)
 
-        return data
-
-    def dump_part(self, part, update_callback):
-        name = part["partition"].partition_name
-        out_file = open("%s/%s.img" % (self.out, name), "wb")
-        h = hashlib.sha256()
-
-        if self.diff:
-            old_file = open("%s/%s.img" % (self.old, name), "rb")
-        else:
-            old_file = None
-
-        for op in part["operations"]:
-            data = self.data_for_op(op, out_file, old_file)
-            update_callback(part["partition"].partition_name, 1)
+    def do_op(self, partition_name, op, out_file, old_file, counter: ThreadSafeCounter, max_op: int, update_callback):
+        #print('do op', partition_name, op)
+        self.data_for_op(op, out_file, old_file)
+        update_callback(partition_name, 1, max_op)
+        if counter.increment() == max_op:
+            out_file.close()
+            if old_file is not None:
+                old_file.close()
 
     def list_partitions_info(self):
         partitions_info = []
@@ -282,7 +296,8 @@ class Dumper:
             json.dump(partitions_info, f, indent=4)
 
         # Print to console in a compact format
-        readable_info = ', '.join(f"{info['partition_name']}({info['size_readable']})" for info in partitions_info)
+        readable_info = '\n'.join(f"{info['partition_name']}({info['size_readable']})" for info in partitions_info)
+        print(f'Total {len(partitions_info)} partitions')
         print(readable_info)
         print(f"\nPartition information saved to {output_file}")
 
@@ -290,13 +305,12 @@ class Dumper:
         # Try to extract and display the metadata file from the zip
         metadata_path = "META-INF/com/android/metadata"
         try:
-            with zipfile.ZipFile(self.payloadfile, "r") as zip_file:
-                with zip_file.open(metadata_path) as meta_file:
-                    metadata_content = meta_file.read().decode('utf-8')
-                    output_file = os.path.join(self.out, "metadata")
-                    with open(output_file, "w") as f:
-                        f.write(metadata_content)
-                    print(metadata_content)
-                    print(f"\nMetadata saved to {output_file}")
+            off, sz = mio.get_zip_stored_entry_offset(self.payloadfile, metadata_path)
+            data = self.payloadfile.read(off, sz)
+            output_file = os.path.join(self.out, "metadata")
+            with open(output_file, "wb") as f:
+                f.write(data)
+            print(data.decode('utf-8'))
+            print(f"\nMetadata saved to {output_file}")
         except Exception as e:
             print(f"Failed to extract {metadata_path}: {e}")

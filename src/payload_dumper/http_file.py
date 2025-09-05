@@ -1,6 +1,6 @@
 import io
 import os
-
+from . import mio
 import httpx
 
 
@@ -95,34 +95,131 @@ class HttpFile(io.RawIOBase):
         self.close()
 
 
+class HttpRangeFileMIO(mio.MIOBase):
+    def readable(self) -> bool:
+        return True
+
+    def writable(self) -> bool:
+        return False
+
+    def readinto1(self, off: int, sz: int, buf) -> int:
+        if sz == 0:
+            return 0
+
+        end_pos = min(off + sz - 1, self.size - 1)
+        expected_size = end_pos - off + 1
+        received = 0
+
+        retry_count = 0
+
+        while received < expected_size:
+            headers = {"Range": f"bytes={off+received}-{end_pos}"}
+            try:
+                with self.client.stream("GET", self.url, headers=headers) as r:
+                    if r.status_code != 206:
+                        raise io.UnsupportedOperation(f"Remote did not return partial content: {self.url}")
+                    for chunk in r.iter_bytes(8192):
+                        buf[received : received + len(chunk)] = chunk
+                        received += len(chunk)
+            except httpx.ConnectTimeout as e:
+                retry_count += 1
+                print(f'connection timeout, {retry_count=} {e}')
+                if retry_count >= self.max_retry:
+                    raise e
+        return received
+
+    def readinto(self, off: int, size: int, ba) -> int:
+        if self.closed():
+            raise ValueError('closed!')
+
+        return self.readinto1(off, size, ba)
+
+    def read(self, off: int, size: int) -> bytes:
+        if self.closed():
+            raise ValueError('closed!')
+
+        ba = bytearray(size)
+        n = self.readinto1(off, size, ba)
+        return ba[:n]
+
+    def __init__(self, url: str, max_retry = 10):
+        client = httpx.Client()
+        self.url = url
+        self.client = client
+        self.max_retry = max_retry
+        h = client.head(url)
+        if h.headers.get("Accept-Ranges", "none") != "bytes":
+            raise ValueError(f"Remote does not support ranges: {url}")
+        size = int(h.headers.get("Content-Length", 0))
+        if size == 0:
+            raise ValueError(f"Remote has no length: {url}")
+        self.size = size
+
+    def get_size(self) -> int:
+        return self.size
+
+    def set_size(self, size: int):
+        raise NotImplementedError()
+
+    def write(self, off: int, content: bytes) -> int:
+        raise NotImplementedError()
+
+    def close(self):
+        print('CLIENT CLOSED!!')
+        from traceback import print_stack
+        print_stack()
+        self.client.close()
+
+    def closed(self) -> bool:
+        return self.client.is_closed
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+
+
 if __name__ == "__main__":
     from . import zipfile
 
-    with HttpFile(
-        "https://dl.google.com/developers/android/vic/images/ota/husky_beta-ota-ap31.240322.027-3310ca50.zip"
-    ) as f:
-        f.seek(0, os.SEEK_END)
-        print("file size:", f.tell())
-        f.seek(0, os.SEEK_SET)
-        z = zipfile.ZipFile(f)
-        print(z.namelist())
-        for name in z.namelist():
-            with z.open(name) as payload:
-                print(name, "compress type:", payload._compress_type)
-        print("total read:", f.total_bytes)
+    def main1():
+        with HttpFile(
+            "https://dl.google.com/developers/android/vic/images/ota/husky_beta-ota-ap31.240322.027-3310ca50.zip"
+        ) as f:
+            f.seek(0, os.SEEK_END)
+            print("file size:", f.tell())
+            f.seek(0, os.SEEK_SET)
+            z = zipfile.ZipFile(f)
+            print(z.namelist())
+            for name in z.namelist():
+                with z.open(name) as payload:
+                    print(name, "compress type:", payload._compress_type)
+            print("total read:", f.total_bytes)
 
-    with HttpFile(
-        "https://dl.google.com/developers/android/baklava/images/factory/comet_beta-bp21.241121.009-factory-0739d956.zip"
-    ) as f:
-        f.seek(0, os.SEEK_END)
-        print("file size:", f.tell())
-        f.seek(0, os.SEEK_SET)
-        z = zipfile.ZipFile(f)
-        print(z.namelist())
-        for name in z.namelist():
-            with z.open(name) as payload:
-                print(name, "compress type:", payload._compress_type, 'size:', payload._left)
-        with z.open("comet_beta-bp21.241121.009/image-comet_beta-bp21.241121.009.zip") as f2:
-            z2 = zipfile.ZipFile(f2)
-            print(z2.namelist())
-        print("total read:", f.total_bytes)
+        with HttpFile(
+            "https://dl.google.com/developers/android/baklava/images/factory/comet_beta-bp21.241121.009-factory-0739d956.zip"
+        ) as f:
+            f.seek(0, os.SEEK_END)
+            print("file size:", f.tell())
+            f.seek(0, os.SEEK_SET)
+            z = zipfile.ZipFile(f)
+            print(z.namelist())
+            for name in z.namelist():
+                with z.open(name) as payload:
+                    print(name, "compress type:", payload._compress_type, 'size:', payload._left)
+            with z.open("comet_beta-bp21.241121.009/image-comet_beta-bp21.241121.009.zip") as f2:
+                z2 = zipfile.ZipFile(f2)
+                print(z2.namelist())
+            print("total read:", f.total_bytes)
+
+    hf = HttpRangeFileMIO('OTA_LINK_TO_TEST')
+    sz = hf.get_size()
+    print(sz)
+    off, esz = mio.get_zip_stored_entry_offset(hf, 'payload.bin')
+    print(f'got payload.bin {off=} {esz=}')
+    #data = mio.read(sz - 4096, 4096)
+    #with open('out.bin', 'wb') as f:
+        #f.write(data)
+    hf.close()

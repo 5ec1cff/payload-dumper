@@ -5,6 +5,7 @@ from multiprocessing import cpu_count
 
 from . import http_file
 from .dumper import Dumper
+from . import mio
 
 def main():
     parser = argparse.ArgumentParser(description="OTA payload dumper")
@@ -51,9 +52,9 @@ def main():
 
     payload_file = args.payloadfile
     if payload_file.startswith("http://") or payload_file.startswith("https://"):
-        payload_file = http_file.HttpFile(payload_file)
+        payload_file = http_file.HttpRangeFileMIO(payload_file)
     else:
-        payload_file = open(payload_file, "rb")
+        payload_file = mio.MFile(payload_file, "r")
 
     dumper = Dumper(
         payload_file,
@@ -67,5 +68,6 @@ def main():
     )
     dumper.run()
 
-    if isinstance(payload_file, http_file.HttpFile):
-        print("\ntotal bytes read from network:", payload_file.total_bytes)
+    # TODO:
+    #if isinstance(payload_file, http_file.HttpFile):
+    #    print("\ntotal bytes read from network:", payload_file.total_bytes)
