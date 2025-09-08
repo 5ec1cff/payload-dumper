@@ -1,6 +1,6 @@
 import concurrent
 import sys
-from concurrent.futures import Future, FIRST_COMPLETED, FIRST_EXCEPTION, wait
+from concurrent.futures import Future, FIRST_COMPLETED, FIRST_EXCEPTION, ALL_COMPLETED, wait
 from typing import Any
 
 # https://gist.github.com/Klotzi111/9ab06b0380702cd5f4044c7529bdc096
@@ -58,6 +58,14 @@ class CombinedFuture(Future[Future | None]):
             # or the user called set_result or changed the complete_when attribute. both is not supported
             pass
 
+    def cancel(self):
+        super().cancel()
+        for t in self.futures:
+            try:
+                t.cancel()
+            except:
+                pass
+
     def _set_exception_safe(self, result: Any):
         try:
             self.set_exception(result)
@@ -73,23 +81,44 @@ class CombinedFuture(Future[Future | None]):
 
         if self.complete_when == FIRST_COMPLETED:
             # no count check required because we only need one and we just added our future
-            self._set_result_safe(future)
+            if not future.cancelled():
+                self._set_result_safe(future)
             return
         elif self.complete_when == FIRST_EXCEPTION:
-            e = future.exception(timeout=0)
-            if e is not None:
-                # future completed with exception
-                #self._set_result_safe(future)
-                self._set_exception_safe(e)
+            # call .exception on cancelled future will raise
+            if not future.cancelled():
+                e = future.exception(timeout=0)
+                if e is not None:
+                    # future completed with exception
+                    #self._set_result_safe(future)
+                    self._set_exception_safe((future, e))
         # else: should be concurrent.futures.ALL_COMPLETED
         # but we also want this logic in the FIRST_EXCEPTION case
         if self.completed_futures == self.futures:
             self._set_result_safe(None)
 
-def wait_interruptible(*args, **kwargs):
+def wait_interruptible(fs, timeout=None, return_when=ALL_COMPLETED):
     # https://github.com/agronholm/anyio/discussions/533
-    if sys.platform == 'win32':
+    if sys.platform == 'win32' and timeout is None:
+        # TODO: timeout is not None?
         while True:
-            wait(*args, **kwargs, timeout=.5)
+            dones, undones = wait(fs, timeout=.5, return_when=return_when)
+            if len(dones) == 0:
+                continue
+            need_return = False
+            if return_when == FIRST_COMPLETED:
+                for t in dones:
+                    if t.done():
+                        need_return = True
+                        break
+            elif return_when == FIRST_EXCEPTION:
+                for t in dones:
+                    if t.exception(0) is not None:
+                        need_return = True
+                        break
+            if len(undones) == 0:
+                need_return = True
+            if need_return:
+                return dones, undones
     else:
-        wait(*args, **kwargs)
+        return wait(fs, timeout=timeout, return_when=return_when)

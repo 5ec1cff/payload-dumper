@@ -112,6 +112,8 @@ class Dumper:
 
         self.multiprocess_partitions(partitions_with_ops)
         self.manager.stop()
+        # make progressbar not overlaid by shell prompt
+        print()
 
     def multiprocess_partitions(self, partitions):
         with ThreadPoolExecutor(max_workers=self.workers) as executor:
@@ -148,6 +150,7 @@ class Dumper:
                     out_file.close()
                     if old_file is not None:
                         old_file.close()
+                    bar.close(clear=True)
 
                 tsk = CombinedFuture(*tasks)
                 tsk.add_done_callback(clean_up)
@@ -155,17 +158,21 @@ class Dumper:
                 all_tasks.append(tsk)
 
             try:
-                wait_interruptible(all_tasks, return_when=futures.FIRST_EXCEPTION)
+                dones, _ = wait_interruptible(all_tasks, return_when=futures.FIRST_EXCEPTION)
+                for t in dones:
+                    e = t.exception(0)
+                    if e is not None:
+                        raise e
             except KeyboardInterrupt:
                 print('Stopping ...')
+                return
+            finally:
                 # ensure clean up
                 for t in all_tasks:
                     try:
                         t.cancel()
                     except:
                         pass
-                return
-            finally:
                 self.payloadfile.close()
 
 
@@ -251,8 +258,11 @@ class Dumper:
 
     def do_op(self, partition_name, op, out_file, old_file, bar):
         #print('do op', partition_name, op)
-        self.data_for_op(op, out_file, old_file)
-        bar.update(1)
+        try:
+            self.data_for_op(op, out_file, old_file)
+            bar.update(1)
+        except futures.CancelledError:
+            pass
 
     def list_partitions_info(self):
         partitions_info = []
