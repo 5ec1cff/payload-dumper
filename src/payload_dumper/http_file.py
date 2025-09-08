@@ -165,9 +165,6 @@ class HttpRangeFileMIO(mio.MIOBase):
         raise NotImplementedError()
 
     def close(self):
-        print('CLIENT CLOSED!!')
-        from traceback import print_stack
-        print_stack()
         self.client.close()
 
     def closed(self) -> bool:

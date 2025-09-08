@@ -6,8 +6,8 @@ import lzma
 import os
 import struct
 import sys
-import threading
 from concurrent.futures import ThreadPoolExecutor
+from concurrent import futures
 from multiprocessing import cpu_count
 
 import bsdiff4
@@ -16,22 +16,7 @@ from enlighten import get_manager
 from . import mio
 from . import update_metadata_pb2 as um
 from .ziputil import get_zip_stored_entry_offset
-
-
-class ThreadSafeCounter():
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.counter=0
-
-    def increment(self):
-        with self.lock:
-            self.counter+=1
-            return self.counter
-
-    def decrement(self):
-        with self.lock:
-            self.counter-=1
-            return self.counter
+from .future_util import CombinedFuture, wait_interruptible
 
 flatten = lambda l: [item for sublist in l for item in sublist]
 
@@ -129,23 +114,11 @@ class Dumper:
         self.manager.stop()
 
     def multiprocess_partitions(self, partitions):
-        progress_bars = {}
-
-        def update_progress(partition_name, count, max_count):
-            counter = progress_bars[partition_name]
-            counter.update(count)
-            if max_count == progress_bars[partition_name].count:
-                counter.close()
-
-        out_files = {}
-        old_files = {}
-        counters = {}
-
         with ThreadPoolExecutor(max_workers=self.workers) as executor:
-            all_task = []
+            all_tasks = []
             for part in partitions:
                 partition_name = part["partition"].partition_name
-                progress_bars[partition_name] = self.manager.counter(
+                bar = self.manager.counter(
                     total=len(part["operations"]),
                     desc=f"{partition_name}",
                     unit="ops",
@@ -159,29 +132,42 @@ class Dumper:
                 else:
                     old_file = None
 
-                out_files[partition_name] = out_file
-                old_files[partition_name] = old_file
-                counters[partition_name] = ThreadSafeCounter()
-
-            for part in partitions:
-                name = part["partition"].partition_name
                 ops = part['operations']
+                tasks = []
                 for op in ops:
-                    all_task.append(
+                    tasks.append(
                         executor.submit(
                             self.do_op,
-                            name,
+                            partition_name,
                             op,
-                            out_files[name],
-                            old_files[name],
-                            counters[name],
-                            len(ops),
-                            update_progress
+                            out_file, old_file, bar
                         )
                     )
 
-            for tsk in all_task:
-                tsk.result()
+                def clean_up(_):
+                    out_file.close()
+                    if old_file is not None:
+                        old_file.close()
+
+                tsk = CombinedFuture(*tasks)
+                tsk.add_done_callback(clean_up)
+
+                all_tasks.append(tsk)
+
+            try:
+                wait_interruptible(all_tasks, return_when=futures.FIRST_EXCEPTION)
+            except KeyboardInterrupt:
+                print('Stopping ...')
+                # ensure clean up
+                for t in all_tasks:
+                    try:
+                        t.cancel()
+                    except:
+                        pass
+                return
+            finally:
+                self.payloadfile.close()
+
 
     def parse_metadata(self):
         head_len = 4 + 8 + 8 + 4
@@ -263,14 +249,10 @@ class Dumper:
             print("Unsupported type = %d" % op.type)
             sys.exit(-1)
 
-    def do_op(self, partition_name, op, out_file, old_file, counter: ThreadSafeCounter, max_op: int, update_callback):
+    def do_op(self, partition_name, op, out_file, old_file, bar):
         #print('do op', partition_name, op)
         self.data_for_op(op, out_file, old_file)
-        update_callback(partition_name, 1, max_op)
-        if counter.increment() == max_op:
-            out_file.close()
-            if old_file is not None:
-                old_file.close()
+        bar.update(1)
 
     def list_partitions_info(self):
         partitions_info = []
