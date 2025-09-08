@@ -1,5 +1,10 @@
 from . import MIOBase
 
+# no-op
+def set_file_sparse(handle, is_sparse: bool):
+    pass
+
+# TODO: use pread / pwrite
 class UnixMFile(MIOBase):
     def __init__(self, path: str, mode: str):
         pass

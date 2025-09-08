@@ -1,6 +1,5 @@
 import sys
 
-
 class MIOBase:
     # read as much as size
     def read(self, off: int, size: int) -> bytes:
@@ -30,12 +29,70 @@ class MIOBase:
     def closed(self) -> bool:
         pass
 
-# TODO: on unix, use pread / pwrite
+
+USE_MMAP = False
+if USE_MMAP:
+    import mmap
+
+    class MMapedFileMIO(MIOBase):
+        def __init__(self, fileno, length, off, for_write: bool):
+            prot = mmap.PROT_READ
+            self.is_writable = False
+            if for_write:
+                prot |= mmap.PROT_WRITE
+                self.is_writable = True
+            self.mapped = mmap.mmap(fileno=fileno, length=length, offset=off, access=prot, flags=mmap.MAP_SHARED)
+
+        def read(self, off: int, size: int) -> bytes:
+            sz = self.mapped.size()
+            if off < 0 or off >= sz:
+                raise ValueError(f'invalid offset {off}')
+            end = off + size
+            if end > sz:
+                end = sz
+            return self.mapped[off:end]
+
+        def readinto(self, off: int, size: int, ba) -> int:
+            content = self.read(off, size)
+            ba[:len(content)] = content
+            return len(content)
+
+        def write(self, off: int, content: bytes) -> int:
+            sz = self.mapped.size()
+            size = len(content)
+            if off < 0 or off >= sz:
+                raise ValueError(f'invalid offset {off}')
+            end = off + size
+            if end > sz:
+                end = sz
+            real_sz = end - off
+            # TODO: expand?
+            self.mapped[off:end] = content[:real_sz]
+            return real_sz
+
+        def get_size(self) -> int:
+            return self.mapped.size()
+
+        def set_size(self, size: int):
+            self.mapped.resize(size)
+
+        def readable(self) -> bool:
+            return True
+
+        def writable(self) -> bool:
+            return self.is_writable
+
+        def close(self):
+            self.mapped.close()
+
+        def closed(self) -> bool:
+            return self.mapped.closed
+
 if sys.platform == 'win32':
-    from ._windows import WindowsMFile
+    from ._windows import WindowsMFile, set_file_sparse
     MFile = WindowsMFile
 else:
-    from ._unix import UnixMFile
+    from ._unix import UnixMFile, set_file_sparse
     MFile = UnixMFile
 
 

@@ -6,6 +6,12 @@ import winerror
 
 from . import MIOBase
 
+def set_file_sparse(handle, is_sparse: bool):
+    if is_sparse:
+        buf = b'\1'
+    else:
+        buf = b'\0'
+    win32file.DeviceIoControl(handle, winioctlcon.FSCTL_SET_SPARSE, buf, None, None)
 
 class WindowsMFile(MIOBase):
     def __init__(self, path: str, mode: str):
@@ -129,8 +135,4 @@ class WindowsMFile(MIOBase):
     def set_sparse(self, is_sparse: bool):
         if self.closed:
             raise ValueError('Closed!')
-        if is_sparse:
-            buf = b'\1'
-        else:
-            buf = b'\0'
-        win32file.DeviceIoControl(self.handle, winioctlcon.FSCTL_SET_SPARSE, buf, None, None)
+        set_file_sparse(self.handle, is_sparse)
