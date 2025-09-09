@@ -15,6 +15,7 @@ from enlighten import get_manager
 
 from . import mio
 from . import update_metadata_pb2 as um
+from .update_metadata_pb2 import InstallOperation
 from .ziputil import get_zip_stored_entry_offset
 from .future_util import CombinedFuture, wait_interruptible
 
@@ -213,24 +214,24 @@ class Dumper:
 
         data = self.payloadfile.read(self.base_off + offset, length)
 
-        if op.type == op.REPLACE_XZ:
+        if op.type == InstallOperation.REPLACE_XZ:
             dec = lzma.LZMADecompressor()
             data = dec.decompress(data)
             out_file.write(op.dst_extents[0].start_block * self.block_size, data)
-        elif op.type == op.REPLACE_BZ:
+        elif op.type == InstallOperation.REPLACE_BZ:
             dec = bz2.BZ2Decompressor()
             data = dec.decompress(data)
             out_file.write(op.dst_extents[0].start_block * self.block_size, data)
-        elif op.type == op.REPLACE:
+        elif op.type == InstallOperation.REPLACE:
             out_file.write(op.dst_extents[0].start_block * self.block_size, data)
-        elif op.type == op.SOURCE_COPY:
+        elif op.type == InstallOperation.SOURCE_COPY:
             if not self.diff:
                 print("SOURCE_COPY supported only for differential OTA")
                 sys.exit(-2)
             for ext in op.src_extents:
                 data = old_file.read(ext.start_block * self.block_size, ext.num_blocks * self.block_size)
                 out_file.write(op.dst_extents[0].start_block * self.block_size, data)
-        elif op.type == op.SOURCE_BSDIFF:
+        elif op.type == InstallOperation.SOURCE_BSDIFF:
             if not self.diff:
                 print("SOURCE_BSDIFF supported only for differential OTA")
                 sys.exit(-3)
@@ -244,17 +245,16 @@ class Dumper:
             tmp_buff.write(bsdiff4.patch(old_data, data))
             n = 0
             tmp_buff.seek(0)
-            for ext in op.dst_extents:
+            for ext in InstallOperation.dst_extents:
                 tmp_buff.seek(n * self.block_size)
                 n += ext.num_blocks
                 data = tmp_buff.read(ext.num_blocks * self.block_size)
                 out_file.write(ext.start_block * self.block_size, data)
-        elif op.type == op.ZERO:
+        elif op.type == InstallOperation.ZERO:
             for ext in op.dst_extents:
                 out_file.write(ext.start_block * self.block_size, b"\x00" * ext.num_blocks * self.block_size)
         else:
-            print("Unsupported type = %d" % op.type)
-            sys.exit(-1)
+            raise ValueError("Unsupported type = %d" % op.type)
 
     def do_op(self, partition_name, op, out_file, old_file, bar):
         #print('do op', partition_name, op)
