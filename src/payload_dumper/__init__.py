@@ -2,6 +2,7 @@
 import argparse
 import os
 from multiprocessing import cpu_count
+import time
 
 from . import http_file
 from .dumper import Dumper
@@ -66,7 +67,9 @@ def main():
         list_partitions=args.list,
         extract_metadata=args.metadata,
     )
+
     dumper.run()
+
 
     # TODO:
     #if isinstance(payload_file, http_file.HttpFile):

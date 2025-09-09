@@ -1,3 +1,4 @@
+import os
 import sys
 
 class MIOBase:
@@ -89,9 +90,59 @@ if USE_MMAP:
             return self.mapped.closed
 
 if sys.platform == 'win32':
-    from ._windows import WindowsMFile, set_file_sparse
-    MFile = WindowsMFile
+    USE_IO = True
 else:
-    from ._unix import UnixMFile, set_file_sparse
-    MFile = UnixMFile
+    USE_IO = False
+
+if USE_IO:
+    from threading import Lock
+
+    def set_file_sparse(handle, is_sparse: bool):
+        pass
+
+    class FileMFile(MIOBase):
+        def __init__(self, path, mode):
+            self.f = open(path, mode + 'b')
+            self.lock = Lock()
+
+        def read(self, off: int, size: int) -> bytes:
+            with self.lock:
+                self.f.seek(off, os.SEEK_SET)
+                return self.f.read(size)
+
+        def readinto(self, off: int, size: int, ba) -> int:
+            with self.lock:
+                self.f.seek(off, os.SEEK_SET)
+                return self.f.readinto(ba)
+
+        def write(self, off: int, content: bytes) -> int:
+            with self.lock:
+                self.f.seek(off, os.SEEK_SET)
+                return self.f.write(content)
+
+        def get_size(self) -> int:
+            return os.fstat(self.f.fileno()).st_size
+
+        def set_size(self, size: int):
+            os.ftruncate(self.f.fileno(), size)
+
+        def readable(self) -> bool:
+            return self.f.readable()
+
+        def writable(self) -> bool:
+            return self.f.writable()
+
+        def close(self):
+            self.f.close()
+
+        def closed(self) -> bool:
+            return self.f.closed
+    MFile = FileMFile
+else:
+    if sys.platform == 'win32':
+        from ._windows import WindowsMFile, set_file_sparse
+        MFile = WindowsMFile
+    else:
+        from ._unix import UnixMFile, set_file_sparse
+        MFile = UnixMFile
 
