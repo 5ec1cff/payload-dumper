@@ -280,7 +280,8 @@ class Dumper:
                 "partition_name": partition.partition_name,
                 "size_in_blocks": size_in_blocks,
                 "size_in_bytes": size_in_bytes,
-                "size_readable": size_str
+                "size_readable": size_str,
+                "hash": partition.new_partition_info.hash.hex()
             })
         
         # Output to JSON file
