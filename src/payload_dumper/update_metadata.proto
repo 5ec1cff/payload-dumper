@@ -1,4 +1,5 @@
 // https://android.googlesource.com/platform/system/update_engine/+/dc84c2552b2d4cf00d2a843cb1c091d99d0499f1/update_metadata.proto
+// generate python binding: protoc update_metadata.proto --python_out=. --pyi_out=.
 //
 // Copyright (C) 2010 The Android Open Source Project
 //
@@ -175,6 +176,10 @@ message InstallOperation {
     // On minor version 9 or newer, these operations are supported:
     LZ4DIFF_BSDIFF = 12;
     LZ4DIFF_PUFFDIFF = 13;
+
+    // vivo support
+    // https://github.com/ssut/payload-dumper-go/commit/d8ba4911ebd750aa50e80afc045b405988fe4138
+    ZSTD = 14;
   }
   required Type type = 1;
 

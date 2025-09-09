@@ -56,6 +56,7 @@ class InstallOperation(_message.Message):
         ZUCCHINI: _ClassVar[InstallOperation.Type]
         LZ4DIFF_BSDIFF: _ClassVar[InstallOperation.Type]
         LZ4DIFF_PUFFDIFF: _ClassVar[InstallOperation.Type]
+        ZSTD: _ClassVar[InstallOperation.Type]
     REPLACE: InstallOperation.Type
     REPLACE_BZ: InstallOperation.Type
     MOVE: InstallOperation.Type
@@ -70,6 +71,7 @@ class InstallOperation(_message.Message):
     ZUCCHINI: InstallOperation.Type
     LZ4DIFF_BSDIFF: InstallOperation.Type
     LZ4DIFF_PUFFDIFF: InstallOperation.Type
+    ZSTD: InstallOperation.Type
     TYPE_FIELD_NUMBER: _ClassVar[int]
     DATA_OFFSET_FIELD_NUMBER: _ClassVar[int]
     DATA_LENGTH_FIELD_NUMBER: _ClassVar[int]

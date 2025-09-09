@@ -6,6 +6,7 @@ import lzma
 import os
 import struct
 import sys
+import zstandard
 from concurrent.futures import ThreadPoolExecutor
 from concurrent import futures
 from multiprocessing import cpu_count
@@ -209,6 +210,7 @@ class Dumper:
         offset = operation["offset"]
         length = operation["length"]
         op = operation["operation"]
+        op: InstallOperation
 
         # assert hashlib.sha256(data).digest() == op.data_sha256_hash, 'operation data hash mismatch'
 
@@ -217,10 +219,12 @@ class Dumper:
         if op.type == InstallOperation.REPLACE_XZ:
             dec = lzma.LZMADecompressor()
             data = dec.decompress(data)
+            assert op.dst_extents[0].num_blocks * self.block_size == len(data)
             out_file.write(op.dst_extents[0].start_block * self.block_size, data)
         elif op.type == InstallOperation.REPLACE_BZ:
             dec = bz2.BZ2Decompressor()
             data = dec.decompress(data)
+            assert op.dst_extents[0].num_blocks * self.block_size == len(data)
             out_file.write(op.dst_extents[0].start_block * self.block_size, data)
         elif op.type == InstallOperation.REPLACE:
             out_file.write(op.dst_extents[0].start_block * self.block_size, data)
@@ -253,6 +257,10 @@ class Dumper:
         elif op.type == InstallOperation.ZERO:
             for ext in op.dst_extents:
                 out_file.write(ext.start_block * self.block_size, b"\x00" * ext.num_blocks * self.block_size)
+        elif op.type == InstallOperation.ZSTD:
+            data = zstandard.decompress(data)
+            assert op.dst_extents[0].num_blocks * self.block_size == len(data)
+            out_file.write(op.dst_extents[0].start_block * self.block_size, data)
         else:
             raise ValueError("Unsupported type = %d" % op.type)
 
