@@ -75,7 +75,5 @@ def main():
 
     dumper.run()
 
-
-    # TODO:
-    #if isinstance(payload_file, http_file.HttpFile):
-    #    print("\ntotal bytes read from network:", payload_file.total_bytes)
+    if isinstance(payload_file, http_file.HttpRangeFileMTIO):
+        print("\ntotal bytes read from network:", payload_file.transferred_bytes)

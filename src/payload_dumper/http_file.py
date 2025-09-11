@@ -1,69 +1,6 @@
 import io
 import httpx
-
-
-class HttpFile(io.RawIOBase):
-
-    def seekable(self) -> bool:
-        return True
-
-    def readable(self) -> bool:
-        return True
-
-    def writable(self) -> bool:
-        return False
-
-    def _read_internal(self, buf: bytes) -> int:
-        size = len(buf)
-        end_pos = min(self.pos + size - 1, self.size - 1)
-        size = end_pos - self.pos + 1
-        headers = {"Range": f"bytes={self.pos}-{end_pos}"}
-        n = 0
-        with self.client.stream("GET", self.url, headers=headers) as r:
-            if r.status_code != 206:
-                raise io.UnsupportedOperation("Remote did not return partial content!")
-            if self.progress_reporter is not None:
-                self.progress_reporter(0, size)
-            for chunk in r.iter_bytes(8192):
-                buf[n : n + len(chunk)] = chunk
-                n += len(chunk)
-                if self.progress_reporter is not None:
-                    self.progress_reporter(n, size)
-            if self.progress_reporter is not None:
-                self.progress_reporter(size, size)
-            self.total_bytes += n
-            self.pos += n
-        assert n == size
-        return n
-
-    def readall(self) -> bytes:
-        sz = self.size - self.pos
-        buf = bytearray(sz)
-        self._read_internal(buf)
-        return buf
-
-    def readinto(self, buffer) -> int:
-        # print(f'read into from {self.pos}-{end_pos}')
-        return self._read_internal(buffer)
-
-    def seek(self, offset: int, whence: int = os.SEEK_SET) -> int:
-        # print(f'seek to {offset} whence {whence}')
-        if whence == os.SEEK_SET:
-            new_pos = offset
-        elif whence == os.SEEK_CUR:
-            new_pos = self.pos + offset
-        elif whence == os.SEEK_END:
-            new_pos = self.size + offset
-        else:
-            raise io.UnsupportedOperation(f"unsupported seek whence! {whence}")
-        if new_pos < 0 or new_pos > self.size:
-            raise ValueError(f"invalid position to seek: {new_pos} in size {self.size}")
-        # print(f'seek: pos {self.pos} -> {new_pos}')
-        self.pos = new_pos
-        return new_pos
-
-    def tell(self) -> int:
-        return self.pos
+from threading import Lock
 
 from . import mtio
 
@@ -94,6 +31,8 @@ class HttpRangeFileMTIO(mtio.MTIOBase):
                     for chunk in r.iter_bytes(8192):
                         buf[received : received + len(chunk)] = chunk
                         received += len(chunk)
+                        with self.lock:
+                            self.transferred_bytes += len(chunk)
             except httpx.ConnectTimeout as e:
                 retry_count += 1
                 print(f'connection timeout, {retry_count=} {e}')
@@ -127,6 +66,8 @@ class HttpRangeFileMTIO(mtio.MTIOBase):
         if size == 0:
             raise ValueError(f"Remote has no length: {url}")
         self.size = size
+        self.transferred_bytes = 0
+        self.lock = Lock()
 
     def set_headers(self, headers):
         self.client.headers = headers
