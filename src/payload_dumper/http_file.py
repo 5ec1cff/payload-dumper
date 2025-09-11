@@ -117,7 +117,7 @@ class HttpRangeFileMIO(mio.MIOBase):
             try:
                 with self.client.stream("GET", self.url, headers=headers) as r:
                     if r.status_code != 206:
-                        raise io.UnsupportedOperation(f"Remote did not return partial content: {self.url}")
+                        raise io.UnsupportedOperation(f"Remote did not return partial content: {self.url} {r.status_code} {r.text}")
                     for chunk in r.iter_bytes(8192):
                         buf[received : received + len(chunk)] = chunk
                         received += len(chunk)
@@ -149,7 +149,7 @@ class HttpRangeFileMIO(mio.MIOBase):
         self.max_retry = max_retry
         h = client.head(url)
         if h.headers.get("Accept-Ranges", "none") != "bytes":
-            raise ValueError(f"Remote does not support ranges: {url}")
+            raise ValueError(f"Remote does not support ranges: {url} {h.status_code} {h.request.headers}")
         size = int(h.headers.get("Content-Length", 0))
         if size == 0:
             raise ValueError(f"Remote has no length: {url}")
