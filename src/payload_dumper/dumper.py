@@ -10,6 +10,7 @@ from zstd import ZSTD_uncompress
 from concurrent.futures import ThreadPoolExecutor
 from concurrent import futures
 from multiprocessing import cpu_count
+from functools import partial
 
 import bsdiff4.core
 from enlighten import get_manager
@@ -186,14 +187,14 @@ class Dumper:
                         )
                     )
 
-                def clean_up(_):
+                def clean_up(_, out_file, old_file, bar):
                     out_file.close()
                     if old_file is not None:
                         old_file.close()
                     bar.close(clear=True)
 
                 tsk = CombinedFuture(*tasks)
-                tsk.add_done_callback(clean_up)
+                tsk.add_done_callback(partial(clean_up, out_file=out_file, old_file=old_file, bar=bar))
 
                 all_tasks.append(tsk)
 
