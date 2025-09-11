@@ -53,13 +53,12 @@ def main():
 
     payload_file = args.payloadfile
     if payload_file.startswith("http://") or payload_file.startswith("https://"):
-        payload_file = http_file.HttpRangeFileMTIO(payload_file)
-
+        headers = None
         if args.header is not None:
             headers = {}
             for k, v in args.header:
                 headers[k] = v
-            payload_file.set_headers(headers)
+        payload_file = http_file.HttpRangeFileMTIO(payload_file, headers=headers)
     else:
         payload_file = mtio.MTFile(payload_file, "r")
     dumper = Dumper(

@@ -61,9 +61,12 @@ class Dumper:
         else:
             try:
                 off, size = get_zip_stored_entry_offset(self.payloadfile, 'payload.bin')
-                #print(f'payload.bin in zip {off=} {size=}')
+                print(f'payload.bin in zip {off=} {size=}')
                 self.base_off = off
             except:
+                #from traceback import print_exc
+                #print_exc()
+                #print('not a zip')
                 self.base_off = 0
 
             self.parse_metadata()

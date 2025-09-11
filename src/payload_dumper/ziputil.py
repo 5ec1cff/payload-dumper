@@ -104,7 +104,7 @@ def get_zip_stored_entry_offset(file: mtio.MTIOBase, name: str):
         cd_ent_sz = zip_cdfh_size + file_name_length + extra_field_length + file_comment_length
         #print(data[p+sizeCentralDir:p+sizeCentralDir+file_name_length])
         file_name = data[p+zip_cdfh_size:p+zip_cdfh_size+file_name_length]
-
+        #print(file_name)
         if file_name == name_utf8:
             compression_method = cd[4]
             file_compressed_size = cd[8]

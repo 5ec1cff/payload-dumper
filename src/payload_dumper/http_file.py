@@ -27,7 +27,7 @@ class HttpRangeFileMTIO(mtio.MTIOBase):
             try:
                 with self.client.stream("GET", self.url, headers=headers) as r:
                     if r.status_code != 206:
-                        raise io.UnsupportedOperation(f"Remote did not return partial content: {self.url} {r.status_code}")
+                        raise io.UnsupportedOperation(f"Remote did not return partial content: {self.url} {r.status_code} {r.request.headers}")
                     for chunk in r.iter_bytes(8192):
                         buf[received : received + len(chunk)] = chunk
                         received += len(chunk)
@@ -54,11 +54,13 @@ class HttpRangeFileMTIO(mtio.MTIOBase):
         n = self.readinto1(off, size, ba)
         return ba[:n]
 
-    def __init__(self, url: str, max_retry = 10):
+    def __init__(self, url: str, max_retry = 10, headers=None):
         client = httpx.Client()
         self.url = url
         self.client = client
         self.max_retry = max_retry
+        if headers is not None:
+            self.client.headers = headers
         h = client.head(url)
         if h.headers.get("Accept-Ranges", "none") != "bytes":
             raise ValueError(f"Remote does not support ranges: {url} {h.status_code} {h.request.headers}")
@@ -68,9 +70,6 @@ class HttpRangeFileMTIO(mtio.MTIOBase):
         self.size = size
         self.transferred_bytes = 0
         self.lock = Lock()
-
-    def set_headers(self, headers):
-        self.client.headers = headers
 
     def get_size(self) -> int:
         return self.size
