@@ -11,10 +11,11 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent import futures
 from multiprocessing import cpu_count
 
-import bsdiff4
+import bsdiff4.core
 from enlighten import get_manager
 
 import hashlib
+import brotli
 
 from . import mtio
 from . import update_metadata_pb2 as um
@@ -30,11 +31,50 @@ def u32(x):
 def u64(x):
     return struct.unpack(">Q", x)[0]
 
+BSDF2_MAGIC = b'BSDF2'
+
+def bsdf2_decompress(alg, data):
+    if alg == 0:
+        return data
+    elif alg == 1:
+        return bz2.decompress(data)
+    elif alg == 2:
+        return brotli.decompress(data)
+    else:
+        raise ValueError(f'unknown algorithm {alg}')
 
 
-        blocks += ext.num_blocks
+# Adapted from bsdiff4.read_patch
+def bsdf2_read_patch(fi):
+    """read a bsdiff/BSDF2-format patch from stream 'fi'
+    """
+    magic = fi.read(8)
+    if magic == bsdiff4.format.MAGIC:
+        # bsdiff4 uses bzip2 (algorithm 1)
+        alg_control = alg_diff = alg_extra = 1
+    elif magic[:5] == BSDF2_MAGIC:
+        alg_control = magic[5]
+        alg_diff = magic[6]
+        alg_extra = magic[7]
+    else:
+        raise ValueError("incorrect magic bsdiff/BSDF2 header")
 
-    return True
+    # length headers
+    len_control = bsdiff4.core.decode_int64(fi.read(8))
+    len_diff = bsdiff4.core.decode_int64(fi.read(8))
+    len_dst = bsdiff4.core.decode_int64(fi.read(8))
+
+    # read the control header
+    bcontrol = bsdf2_decompress(alg_control, fi.read(len_control))
+    tcontrol = [(bsdiff4.core.decode_int64(bcontrol[i:i + 8]),
+                 bsdiff4.core.decode_int64(bcontrol[i + 8:i + 16]),
+                 bsdiff4.core.decode_int64(bcontrol[i + 16:i + 24]))
+                for i in range(0, len(bcontrol), 24)]
+
+    # read the diff and extra blocks
+    bdiff = bsdf2_decompress(alg_diff, fi.read(len_diff))
+    bextra = bsdf2_decompress(alg_extra, fi.read())
+    return len_dst, tcontrol, bdiff, bextra
 
 
 class Dumper:
@@ -234,7 +274,7 @@ class Dumper:
             for ext in op.src_extents:
                 data = old_file.read(ext.start_block * self.block_size, ext.num_blocks * self.block_size)
                 out_file.write(op.dst_extents[0].start_block * self.block_size, data)
-        elif op.type == InstallOperation.SOURCE_BSDIFF:
+        elif op.type in (InstallOperation.SOURCE_BSDIFF, InstallOperation.BROTLI_BSDIFF):
             if not self.diff:
                 print("SOURCE_BSDIFF supported only for differential OTA")
                 sys.exit(-3)
@@ -245,7 +285,7 @@ class Dumper:
             tmp_buff.seek(0)
             old_data = tmp_buff.read()
             tmp_buff.seek(0)
-            tmp_buff.write(bsdiff4.patch(old_data, data))
+            tmp_buff.write(bsdiff4.core.patch(old_data, *bsdf2_read_patch(io.BytesIO(data))))
             n = 0
             tmp_buff.seek(0)
             for ext in InstallOperation.dst_extents:
