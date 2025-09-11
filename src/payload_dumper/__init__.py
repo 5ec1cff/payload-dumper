@@ -44,6 +44,7 @@ def main():
         action="store_true",
         help="extract and display metadata file from the payload",
     )
+    parser.add_argument("--header", action="append", nargs=2)
     args = parser.parse_args()
 
     # Check for --out directory exists
@@ -53,9 +54,14 @@ def main():
     payload_file = args.payloadfile
     if payload_file.startswith("http://") or payload_file.startswith("https://"):
         payload_file = http_file.HttpRangeFileMTIO(payload_file)
+
+        if args.header is not None:
+            headers = {}
+            for k, v in args.header:
+                headers[k] = v
+            payload_file.set_headers(headers)
     else:
         payload_file = mtio.MTFile(payload_file, "r")
-
     dumper = Dumper(
         payload_file,
         args.out,

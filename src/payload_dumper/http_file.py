@@ -117,7 +117,7 @@ class HttpRangeFileMTIO(mtio.MTIOBase):
             try:
                 with self.client.stream("GET", self.url, headers=headers) as r:
                     if r.status_code != 206:
-                        raise io.UnsupportedOperation(f"Remote did not return partial content: {self.url} {r.status_code} {r.text}")
+                        raise io.UnsupportedOperation(f"Remote did not return partial content: {self.url} {r.status_code}")
                     for chunk in r.iter_bytes(8192):
                         buf[received : received + len(chunk)] = chunk
                         received += len(chunk)
@@ -154,6 +154,9 @@ class HttpRangeFileMTIO(mtio.MTIOBase):
         if size == 0:
             raise ValueError(f"Remote has no length: {url}")
         self.size = size
+
+    def set_headers(self, headers):
+        self.client.headers = headers
 
     def get_size(self) -> int:
         return self.size
