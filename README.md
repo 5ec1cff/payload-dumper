@@ -6,6 +6,7 @@ This is a modified version of payload dumper that supports the following feature
 
 1. Extract partitions directly from a zip archive containing payload.bin without unzipping it.   
 2. Extract partitions directly from a URL (such as an OTA update URL) containing payload.bin from the network without downloading the entire file.  
+3. Multithreaded downloading and extraction.
 
 With this script, you only need a small amount of time and storage space to extract the partitions you want from the OTA update package or address, especially the smaller partitions such as boot, init_boot, vbmeta, etc.
 
