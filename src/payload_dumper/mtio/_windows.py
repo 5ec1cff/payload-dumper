@@ -4,7 +4,7 @@ import winioctlcon
 import pywintypes
 import winerror
 
-from . import MIOBase
+from . import MTIOBase
 
 def set_file_sparse(handle, is_sparse: bool):
     if is_sparse:
@@ -13,7 +13,7 @@ def set_file_sparse(handle, is_sparse: bool):
         buf = b'\0'
     win32file.DeviceIoControl(handle, winioctlcon.FSCTL_SET_SPARSE, buf, None, None)
 
-class WindowsMFile(MIOBase):
+class WindowsMTFile(MTIOBase):
     def __init__(self, path: str, mode: str):
         is_r = 'r' in mode
         is_w = 'w' in mode

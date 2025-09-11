@@ -1,5 +1,5 @@
 import struct
-from . import mio
+from . import mtio
 
 zip_eocd_struct = b"<4s4H2LH"
 zip_eocd_magic = b"PK\005\006"
@@ -24,7 +24,7 @@ zip_fh_size = struct.calcsize(zip_fh_struct)
 ZIP_MAX_COMMENT = (1 << 16) - 1
 ZIP_STORED = 0
 
-def get_zip_stored_entry_offset(file: mio.MIOBase, name: str):
+def get_zip_stored_entry_offset(file: mtio.MTIOBase, name: str):
     sz = file.get_size()
 
     if sz < zip_eocd_size:

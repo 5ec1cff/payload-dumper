@@ -1,7 +1,7 @@
 import os
 import sys
 
-class MIOBase:
+class MTIOBase:
     # read as much as size
     def read(self, off: int, size: int) -> bytes:
         pass
@@ -35,7 +35,7 @@ USE_MMAP = False
 if USE_MMAP:
     import mmap
 
-    class MMapedFileMIO(MIOBase):
+    class MMapedFileMTIO(MTIOBase):
         def __init__(self, fileno, length, off, for_write: bool):
             prot = mmap.PROT_READ
             self.is_writable = False
@@ -100,7 +100,7 @@ if USE_IO:
     def set_file_sparse(handle, is_sparse: bool):
         pass
 
-    class FileMFile(MIOBase):
+    class FileMTFile(MTIOBase):
         def __init__(self, path, mode):
             self.f = open(path, mode + 'b')
             self.lock = Lock()
@@ -137,12 +137,12 @@ if USE_IO:
 
         def closed(self) -> bool:
             return self.f.closed
-    MFile = FileMFile
+    MTFile = FileMTFile
 else:
     if sys.platform == 'win32':
-        from ._windows import WindowsMFile, set_file_sparse
-        MFile = WindowsMFile
+        from ._windows import WindowsMTFile, set_file_sparse
+        MTFile = WindowsMTFile
     else:
-        from ._unix import UnixMFile, set_file_sparse
-        MFile = UnixMFile
+        from ._unix import UnixMTFile, set_file_sparse
+        MTFile = UnixMTFile
 

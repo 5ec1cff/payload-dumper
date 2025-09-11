@@ -1,6 +1,6 @@
 import io
 import os
-from . import mio
+from . import mtio
 import httpx
 
 
@@ -95,7 +95,7 @@ class HttpFile(io.RawIOBase):
         self.close()
 
 
-class HttpRangeFileMIO(mio.MIOBase):
+class HttpRangeFileMTIO(mtio.MTIOBase):
     def readable(self) -> bool:
         return True
 
@@ -211,10 +211,10 @@ if __name__ == "__main__":
                 print(z2.namelist())
             print("total read:", f.total_bytes)
 
-    hf = HttpRangeFileMIO('OTA_LINK_TO_TEST')
+    hf = HttpRangeFileMTIO('OTA_LINK_TO_TEST')
     sz = hf.get_size()
     print(sz)
-    off, esz = mio.get_zip_stored_entry_offset(hf, 'payload.bin')
+    off, esz = mtio.get_zip_stored_entry_offset(hf, 'payload.bin')
     print(f'got payload.bin {off=} {esz=}')
     #data = mio.read(sz - 4096, 4096)
     #with open('out.bin', 'wb') as f:

@@ -1,8 +1,8 @@
-from . import MFile
+from . import MTFile
 
 if __name__ == '__main__':
     def main():
-        f = MFile('xx.txt', 'r+')
+        f = MTFile('xx.txt', 'r+')
         f.set_sparse(True)
         f.set_size(100)
         print('sz', f.get_size())

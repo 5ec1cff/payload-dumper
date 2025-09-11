@@ -14,7 +14,7 @@ from multiprocessing import cpu_count
 import bsdiff4
 from enlighten import get_manager
 
-from . import mio
+from . import mtio
 from . import update_metadata_pb2 as um
 from .update_metadata_pb2 import InstallOperation
 from .ziputil import get_zip_stored_entry_offset
@@ -46,7 +46,7 @@ class Dumper:
     def __init__(
         self, payloadfile, out, diff=None, old=None, images="", workers=cpu_count(), list_partitions=False, extract_metadata=False
     ):
-        self.payloadfile: mio.MIOBase = payloadfile
+        self.payloadfile: mtio.MTIOBase = payloadfile
         self.manager = get_manager()
         self.out = out
         self.diff = diff
@@ -129,10 +129,10 @@ class Dumper:
                     leave=True,
                 )
 
-                out_file = mio.MFile("%s/%s.img" % (self.out, partition_name), "w")
+                out_file = mtio.MTFile("%s/%s.img" % (self.out, partition_name), "w")
 
                 if self.diff:
-                    old_file = mio.MFile("%s/%s.img" % (self.old, partition_name), "rb")
+                    old_file = mtio.MTFile("%s/%s.img" % (self.old, partition_name), "rb")
                 else:
                     old_file = None
 
@@ -206,7 +206,7 @@ class Dumper:
         self.dam.ParseFromString(manifest)
         self.block_size = self.dam.block_size
 
-    def data_for_op(self, operation, out_file: mio.MIOBase, old_file: mio.MIOBase):
+    def data_for_op(self, operation, out_file: mtio.MTIOBase, old_file: mtio.MTIOBase):
         offset = operation["offset"]
         length = operation["length"]
         op = operation["operation"]

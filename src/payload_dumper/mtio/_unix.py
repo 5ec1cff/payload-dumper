@@ -1,11 +1,11 @@
-from . import MIOBase
+from . import MTIOBase
 import os
 
 # no-op
 def set_file_sparse(handle, is_sparse: bool):
     pass
 
-class UnixMFile(MIOBase):
+class UnixMTFile(MTIOBase):
     def __init__(self, path: str, mode: str):
         is_r = 'r' in mode
         is_w = 'w' in mode

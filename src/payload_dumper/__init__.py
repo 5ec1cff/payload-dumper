@@ -2,11 +2,10 @@
 import argparse
 import os
 from multiprocessing import cpu_count
-import time
 
 from . import http_file
 from .dumper import Dumper
-from . import mio
+from . import mtio
 
 def main():
     parser = argparse.ArgumentParser(description="OTA payload dumper")
@@ -53,9 +52,9 @@ def main():
 
     payload_file = args.payloadfile
     if payload_file.startswith("http://") or payload_file.startswith("https://"):
-        payload_file = http_file.HttpRangeFileMIO(payload_file)
+        payload_file = http_file.HttpRangeFileMTIO(payload_file)
     else:
-        payload_file = mio.MFile(payload_file, "r")
+        payload_file = mtio.MTFile(payload_file, "r")
 
     dumper = Dumper(
         payload_file,
