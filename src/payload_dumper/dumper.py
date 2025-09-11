@@ -22,8 +22,6 @@ from .update_metadata_pb2 import InstallOperation
 from .ziputil import get_zip_stored_entry_offset
 from .future_util import CombinedFuture, wait_interruptible
 
-flatten = lambda l: [item for sublist in l for item in sublist]
-
 
 def u32(x):
     return struct.unpack(">I", x)[0]
@@ -33,11 +31,6 @@ def u64(x):
     return struct.unpack(">Q", x)[0]
 
 
-def verify_contiguous(exts):
-    blocks = 0
-    for ext in exts:
-        if ext.start_block != blocks:
-            return False
 
         blocks += ext.num_blocks
 
@@ -63,7 +56,7 @@ class Dumper:
         else:
             try:
                 off, size = get_zip_stored_entry_offset(self.payloadfile, 'payload.bin')
-                print(f'payload.bin in zip {off=} {size=}')
+                #print(f'payload.bin in zip {off=} {size=}')
                 self.base_off = off
             except:
                 #from traceback import print_exc
