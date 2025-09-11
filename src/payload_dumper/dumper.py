@@ -23,6 +23,7 @@ from . import update_metadata_pb2 as um
 from .update_metadata_pb2 import InstallOperation
 from .ziputil import get_zip_stored_entry_offset
 from .future_util import CombinedFuture, wait_interruptible
+from threading import Lock
 
 
 def u32(x):
@@ -91,6 +92,7 @@ class Dumper:
         self.workers = workers
         self.list_partitions = list_partitions
         self.extract_metadata = extract_metadata
+        self.bar_lock = Lock()
 
         if self.extract_metadata:
             self.extract_and_display_metadata()
@@ -191,7 +193,8 @@ class Dumper:
                     out_file.close()
                     if old_file is not None:
                         old_file.close()
-                    bar.close(clear=True)
+                    with self.bar_lock:
+                        bar.close()
 
                 tsk = CombinedFuture(*tasks)
                 tsk.add_done_callback(partial(clean_up, out_file=out_file, old_file=old_file, bar=bar))
@@ -308,7 +311,8 @@ class Dumper:
         #print('do op', partition_name, op)
         try:
             self.data_for_op(op, out_file, old_file)
-            bar.update(1)
+            with self.bar_lock:
+                bar.update(1)
         except futures.CancelledError:
             pass
 
