@@ -1,6 +1,4 @@
 import io
-import os
-from . import mtio
 import httpx
 
 
@@ -67,32 +65,7 @@ class HttpFile(io.RawIOBase):
     def tell(self) -> int:
         return self.pos
 
-    def __init__(self, url: str, progress_reporter=None):
-        client = httpx.Client()
-        self.url = url
-        self.client = client
-        h = client.head(url)
-        if h.headers.get("Accept-Ranges", "none") != "bytes":
-            raise ValueError("remote does not support ranges!")
-        size = int(h.headers.get("Content-Length", 0))
-        if size == 0:
-            raise ValueError("remote has no length!")
-        self.size = size
-        self.pos = 0
-        self.total_bytes = 0
-        self.progress_reporter = progress_reporter
-
-    def close(self) -> None:
-        self.client.close()
-
-    def closed(self) -> bool:
-        return self.client.is_closed
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
+from . import mtio
 
 
 class HttpRangeFileMTIO(mtio.MTIOBase):
@@ -180,44 +153,12 @@ class HttpRangeFileMTIO(mtio.MTIOBase):
         self.close()
 
 
-
 if __name__ == "__main__":
-    from . import zipfile
-
-    def main1():
-        with HttpFile(
-            "https://dl.google.com/developers/android/vic/images/ota/husky_beta-ota-ap31.240322.027-3310ca50.zip"
-        ) as f:
-            f.seek(0, os.SEEK_END)
-            print("file size:", f.tell())
-            f.seek(0, os.SEEK_SET)
-            z = zipfile.ZipFile(f)
-            print(z.namelist())
-            for name in z.namelist():
-                with z.open(name) as payload:
-                    print(name, "compress type:", payload._compress_type)
-            print("total read:", f.total_bytes)
-
-        with HttpFile(
-            "https://dl.google.com/developers/android/baklava/images/factory/comet_beta-bp21.241121.009-factory-0739d956.zip"
-        ) as f:
-            f.seek(0, os.SEEK_END)
-            print("file size:", f.tell())
-            f.seek(0, os.SEEK_SET)
-            z = zipfile.ZipFile(f)
-            print(z.namelist())
-            for name in z.namelist():
-                with z.open(name) as payload:
-                    print(name, "compress type:", payload._compress_type, 'size:', payload._left)
-            with z.open("comet_beta-bp21.241121.009/image-comet_beta-bp21.241121.009.zip") as f2:
-                z2 = zipfile.ZipFile(f2)
-                print(z2.namelist())
-            print("total read:", f.total_bytes)
-
+    from ziputil import get_zip_stored_entry_offset
     hf = HttpRangeFileMTIO('OTA_LINK_TO_TEST')
     sz = hf.get_size()
     print(sz)
-    off, esz = mtio.get_zip_stored_entry_offset(hf, 'payload.bin')
+    off, esz = get_zip_stored_entry_offset(hf, 'payload.bin')
     print(f'got payload.bin {off=} {esz=}')
     #data = mio.read(sz - 4096, 4096)
     #with open('out.bin', 'wb') as f:
