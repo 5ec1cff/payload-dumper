@@ -6,7 +6,7 @@ import lzma
 import os
 import struct
 import sys
-import zstandard
+from zstd import ZSTD_uncompress
 from concurrent.futures import ThreadPoolExecutor
 from concurrent import futures
 from multiprocessing import cpu_count
@@ -261,7 +261,7 @@ class Dumper:
             for ext in op.dst_extents:
                 out_file.write(ext.start_block * self.block_size, b"\x00" * ext.num_blocks * self.block_size)
         elif op.type == InstallOperation.ZSTD:
-            data = zstandard.decompress(data)
+            data = ZSTD_uncompress(data)
             assert op.dst_extents[0].num_blocks * self.block_size == len(data)
             out_file.write(op.dst_extents[0].start_block * self.block_size, data)
         else:
