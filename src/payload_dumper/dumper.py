@@ -14,6 +14,8 @@ from multiprocessing import cpu_count
 import bsdiff4
 from enlighten import get_manager
 
+import hashlib
+
 from . import mtio
 from . import update_metadata_pb2 as um
 from .update_metadata_pb2 import InstallOperation
@@ -215,9 +217,10 @@ class Dumper:
         op = operation["operation"]
         op: InstallOperation
 
-        # assert hashlib.sha256(data).digest() == op.data_sha256_hash, 'operation data hash mismatch'
-
         data = self.payloadfile.read(self.base_off + offset, length)
+
+        if op.data_sha256_hash:
+            assert hashlib.sha256(data).digest() == op.data_sha256_hash, 'operation data hash mismatch'
 
         if op.type == InstallOperation.REPLACE_XZ:
             dec = lzma.LZMADecompressor()
