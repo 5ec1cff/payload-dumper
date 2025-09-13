@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent import futures
 from multiprocessing import cpu_count
 from functools import partial
+import signal
 
 import bsdiff4.core
 from enlighten import get_manager
@@ -23,7 +24,6 @@ from . import update_metadata_pb2 as um
 from .update_metadata_pb2 import InstallOperation
 from .ziputil import get_zip_stored_entry_offset
 from .future_util import CombinedFuture, wait_interruptible
-from threading import Lock
 
 
 def u32(x):
@@ -92,7 +92,6 @@ class Dumper:
         self.workers = workers
         self.list_partitions = list_partitions
         self.extract_metadata = extract_metadata
-        self.bar_lock = Lock()
 
         if self.extract_metadata:
             self.extract_and_display_metadata()
@@ -155,69 +154,62 @@ class Dumper:
 
         self.multiprocess_partitions(partitions_with_ops)
         self.manager.stop()
+        self.payloadfile.close()
         # make progressbar not overlaid by shell prompt
         print()
 
     def multiprocess_partitions(self, partitions):
         with ThreadPoolExecutor(max_workers=self.workers) as executor:
-            all_tasks = []
             for part in partitions:
-                partition_name = part["partition"].partition_name
-                bar = self.manager.counter(
-                    total=len(part["operations"]),
-                    desc=f"{partition_name}",
-                    unit="ops",
-                    leave=True,
-                )
-
-                out_file = mtio.MTFile("%s/%s.img" % (self.out, partition_name), "w")
-
-                if self.diff:
-                    old_file = mtio.MTFile("%s/%s.img" % (self.old, partition_name), "rb")
-                else:
-                    old_file = None
-
-                ops = part['operations']
-                tasks = []
-                for op in ops:
-                    tasks.append(
-                        executor.submit(
-                            self.do_op,
-                            partition_name,
-                            op,
-                            out_file, old_file, bar
-                        )
+                try:
+                    partition_name = part["partition"].partition_name
+                    bar = self.manager.counter(
+                        total=len(part["operations"]),
+                        desc=f"{partition_name}",
+                        unit="ops",
                     )
 
-                def clean_up(_, out_file, old_file, bar):
+                    out_file = mtio.MTFile("%s/%s.img" % (self.out, partition_name), "w")
+
+                    if self.diff:
+                        old_file = mtio.MTFile("%s/%s.img" % (self.old, partition_name), "rb")
+                    else:
+                        old_file = None
+
+                    ops = part['operations']
+                    tasks = []
+                    for op in ops:
+                        tasks.append(
+                            executor.submit(
+                                self.do_op,
+                                partition_name,
+                                op,
+                                out_file, old_file, bar
+                            )
+                        )
+
+                    dones, _ = wait_interruptible(tasks, return_when=futures.FIRST_EXCEPTION)
+                    for t in dones:
+                        e = t.exception(0)
+                        if e is not None:
+                            raise e
+
                     out_file.close()
                     if old_file is not None:
                         old_file.close()
-                    with self.bar_lock:
-                        bar.close()
-
-                tsk = CombinedFuture(*tasks)
-                tsk.add_done_callback(partial(clean_up, out_file=out_file, old_file=old_file, bar=bar))
-
-                all_tasks.append(tsk)
-
-            try:
-                dones, _ = wait_interruptible(all_tasks, return_when=futures.FIRST_EXCEPTION)
-                for t in dones:
-                    e = t.exception(0)
-                    if e is not None:
-                        raise e
-            except KeyboardInterrupt:
-                print('Stopping ...')
-                return
-            finally:
-                # ensure clean up
-                for t in all_tasks:
+                    bar.close()
+                except KeyboardInterrupt:
                     try:
-                        t.cancel()
+                        bar.close()
+                        self.manager.stop()
                     except:
                         pass
-                self.payloadfile.close()
+                    print('Stopping ...')
+                    if sys.platform == 'win32':
+                        os.kill(os.getpid(), signal.CTRL_BREAK_EVENT)
+                    else:
+                        os.kill(os.getpid(), signal.SIGKILL)
+                    sys.exit(1)
 
 
     def parse_metadata(self):
@@ -311,8 +303,7 @@ class Dumper:
         #print('do op', partition_name, op)
         try:
             self.data_for_op(op, out_file, old_file)
-            with self.bar_lock:
-                bar.update(1)
+            bar.update(1)
         except futures.CancelledError:
             pass
 
