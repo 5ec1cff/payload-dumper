@@ -53,7 +53,7 @@ def main():
     args = parser.parse_args()
 
     # Check for --out directory exists
-    if not os.path.exists(args.out):
+    if (not os.path.exists(args.out)) and (not args.no_output):
         os.makedirs(args.out)
 
     payload_file = args.payloadfile
