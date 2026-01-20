@@ -52,8 +52,9 @@ def main():
     parser.add_argument("--header", action="append", nargs=2)
     args = parser.parse_args()
 
+    output_files = (not args.no_output) if args.list else True
     # Check for --out directory exists
-    if (not os.path.exists(args.out)) and (not args.no_output):
+    if (not os.path.exists(args.out)) and output_files:
         os.makedirs(args.out)
 
     payload_file = args.payloadfile
@@ -75,7 +76,7 @@ def main():
         workers=args.workers,
         list_partitions=args.list,
         extract_metadata=args.metadata,
-        output_files=not args.no_output
+        output_files=output_files
     )
 
     dumper.run()
