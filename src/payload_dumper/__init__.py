@@ -40,6 +40,11 @@ def main():
         help="list partitions in the payload file",
     )
     parser.add_argument(
+        "--no-output",
+        action="store_true",
+        help="change '--list' behavior to only print partition names, no create files and directory in current work directory.",
+    )
+    parser.add_argument(
         "--metadata",
         action="store_true",
         help="extract and display metadata file from the payload",
@@ -70,6 +75,7 @@ def main():
         workers=args.workers,
         list_partitions=args.list,
         extract_metadata=args.metadata,
+        output_files=not args.no_output
     )
 
     dumper.run()
