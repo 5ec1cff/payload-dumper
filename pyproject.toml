@@ -13,7 +13,7 @@ payload_dumper = "payload_dumper:main"
 [tool.poetry.dependencies]
 python = ">=3.9" # protobuf runtime requires this
 httpx = ">=0.23.1"  # https://github.com/encode/httpx/pull/2309
-protobuf = "6.32.0"
+protobuf = ">=6.32.0"
 bsdiff4 = ">=1.2.3"  # This version officially supports Python 3.12
 enlighten = ">=1.12.0"  # This version officially supports Python 3.12
 #pywin32 = {version = "^311", platform = "win32"} # not required for now
