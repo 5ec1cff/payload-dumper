@@ -40,6 +40,11 @@ def main():
         help="list partitions in the payload file",
     )
     parser.add_argument(
+        "--no-output-file",
+        action="store_true",
+        help="change '--list' behavior to only print partition names, no create files and directory in current work directory.",
+    )
+    parser.add_argument(
         "--metadata",
         action="store_true",
         help="extract and display metadata file from the payload",
@@ -47,8 +52,9 @@ def main():
     parser.add_argument("--header", action="append", nargs=2)
     args = parser.parse_args()
 
+    output_files = (not args.no_output_file) if args.list else True
     # Check for --out directory exists
-    if not os.path.exists(args.out):
+    if (not os.path.exists(args.out)) and output_files:
         os.makedirs(args.out)
 
     payload_file = args.payloadfile
@@ -70,6 +76,7 @@ def main():
         workers=args.workers,
         list_partitions=args.list,
         extract_metadata=args.metadata,
+        output_files=output_files
     )
 
     dumper.run()

@@ -81,7 +81,7 @@ def bsdf2_read_patch(fi):
 
 class Dumper:
     def __init__(
-        self, payloadfile, out, diff=None, old=None, images="", workers=cpu_count(), list_partitions=False, extract_metadata=False
+        self, payloadfile, out, diff=None, old=None, images="", workers=cpu_count(), list_partitions=False, extract_metadata=False, output_files = True
     ):
         self.payloadfile: mtio.MTIOBase = payloadfile
         self.manager = get_manager()
@@ -92,7 +92,8 @@ class Dumper:
         self.workers = workers
         self.list_partitions = list_partitions
         self.extract_metadata = extract_metadata
-
+        self.output_files = output_files
+        
         if self.extract_metadata:
             self.extract_and_display_metadata()
         else:
@@ -329,14 +330,15 @@ class Dumper:
         
         # Output to JSON file
         output_file = os.path.join(self.out, "partitions_info.json")
-        with open(output_file, "w") as f:
-            json.dump(partitions_info, f, indent=4)
+        if(self.output_files):
+            with open(output_file, "w") as f:
+                json.dump(partitions_info, f, indent=4)
 
         # Print to console in a compact format
         readable_info = '\n'.join(f"{info['partition_name']}({info['size_readable']})" for info in partitions_info)
         print(f'Total {len(partitions_info)} partitions')
         print(readable_info)
-        print(f"\nPartition information saved to {output_file}")
+        if(self.output_files): print(f"\nPartition information saved to {output_file}")
 
     def extract_and_display_metadata(self):
         # Try to extract and display the metadata file from the zip
